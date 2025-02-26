@@ -36,24 +36,24 @@ mean_path_loss = a * ((-np.log(np.random.rand())) ** (1 / b))
 #----------------------------------------------------------------------------
 # Simulation Start Setup
 #----------------------------------------------------------------------------
-snap_shot_num = 13  # Number of Monte Carlo Simulations
+snap_shot_num = 1  # Number of Monte Carlo Simulations
 
 # Lists to hold simulation results
-P_received_gao       = []  # Received power (dBm) for each data frame (our scheme)
-P_transmitted_gao    = []  # Transmit power (dBm) for each data frame (our scheme)
-P_received_xiao   = []  # Received power (dBm) for Reference Scheme
-P_transmitted_xiao= []  # Transmit power (dBm) for Reference Scheme
+P_received_gao = []  # Received power (dBm) for each data frame (our scheme)
+P_transmitted_gao = []  # Transmit power (dBm) for each data frame (our scheme)
+P_received_xiao = []  # Received power (dBm) for Reference Scheme
+P_transmitted_xiao = []  # Transmit power (dBm) for Reference Scheme
 P_received_const = []  # Received power (dBm) for Constant Power
 P_transmitted_const = []  # Transmit power (dBm) for Constant Power
-P_received_sodhro   = []  # Received power (dBm) for Modified/New scheme
-P_transmitted_sodhro= []  # Transmit power (dBm) for Modified/New scheme
-P_received_target= []  # Target RSSI (dBm)
+P_received_sodhro = []  # Received power (dBm) for Modified/New scheme
+P_transmitted_sodhro = []  # Transmit power (dBm) for Modified/New scheme
+P_received_target = []  # Target RSSI (dBm)
 
 # Packet loss counters
-frame_loss_num_gao      = 0
-frame_loss_num_xiao  = 0
-frame_loss_num_const= 0
-frame_loss_num_sodhro  = 0
+frame_loss_num_gao = 0
+frame_loss_num_xiao = 0
+frame_loss_num_const = 0
+frame_loss_num_sodhro = 0
 
 # Simulation parameters for data transmission
 frame_size = 100 * 8      # Data frame size in bits
@@ -97,7 +97,6 @@ for ss in range(snap_shot_num):
     p_current_sodhro = 0
 
     # Generate signal over the entire simulation time for this snapshot.
-    # Note: gen_sig_wmban is assumed to be defined elsewhere.
     signal = gen_sig_wmban(vel, car_frequency, sample_rate, sim_time * snap_shot_num, mean_path_loss)
 
     #--------------------------------------------------------------------------

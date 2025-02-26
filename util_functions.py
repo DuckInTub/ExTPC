@@ -183,9 +183,9 @@ def gen_sig_wmban(vel, car_frequency, sample_rate, time, mean_path_loss):
     #--------------------------------------------------------------------------
     # Set parameters used to generate signal.
     #--------------------------------------------------------------------------
-    # Maximal Doppler frequency (Hz)
+    # Maximal Doppler frequency shift (Hz)
     fd = (vel / 3.6) * (car_frequency * 1e6) / 3e8
-    # Sample rate (Hz)
+    # Sample rate conversion to hertz (Hz)
     fs = sample_rate * 1e3
     # Normalized Doppler spread (fading parameter)
     p = fd / fs
