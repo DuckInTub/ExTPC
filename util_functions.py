@@ -150,6 +150,8 @@ def manipulate_fade_depths(initial_signal, mean_path_loss):
 
     for kl in range(kt):
         signal_dB = np.concatenate((signal_dB, signal_portion[Rp[kl]]))
+    
+    return signal_dB
 
 
 def gen_sig_wmban(vel, car_frequency, sample_rate, time, mean_path_loss):
@@ -295,3 +297,12 @@ def jakesm_siso(N1, p):
     Hs = np.sum(c * np.exp(-1j * (ft + ts)), axis=1)
     
     return Hs
+
+def wgn(m, n, noise_power_dBW):
+    """
+    Generate white Gaussian noise.
+    noise_power_dBW is in dBW (i.e. dB relative to 1 W).
+    Returns an (m x n) array of noise samples.
+    """
+    noise_power_linear = 10 ** (noise_power_dBW / 10)  # linear scale (W)
+    return np.random.randn(m, n) * np.sqrt(noise_power_linear)
