@@ -56,6 +56,9 @@ def manipulate_fade_depths(initial_signal, mean_path_loss):
     # Initialize a counter for how many signal portions have been used so far.
     kt = 0
 
+    # Initialize signal_portion to store the signal segments.
+    signal_portion = []
+
     #--------------------------------------------------------------------------
     # Fade manipulation:
     # Apply the previously described method of keeping/clipping/removing faded
