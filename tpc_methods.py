@@ -1,11 +1,15 @@
 from abc import ABC, abstractmethod
 
-class PowerInterface(ABC):
+class TPC_method_interface(ABC):
     def __init__(self):
         # Define the parameters with their default types
-        self.power_transmitted: list[float] = []
-        self.power_received: list[float] = []
-        self.power_current: float = 0.0
+        self.rx_powers: list[float] = []
+        self.tx_powers: list[float] = []
+        self.lost_frames: list[int] = []
+        self.current_rx_power: float = 0.0
+        self.current_tx_power: float = 0.0
+        self.power_received_average: float = 0.0
+
 
     @abstractmethod
     def next_transmitt_power(self, current_received_power: float) -> None:
@@ -14,3 +18,8 @@ class PowerInterface(ABC):
         Must be implemented by any subclass.
         """
         pass
+
+def Constant(TCP_method_interface):
+    def next_transmitt_power(self, current_received_power: float) -> float:
+        return 0 # dB
+

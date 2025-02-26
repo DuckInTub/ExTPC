@@ -23,8 +23,14 @@ def simulate_next_RSSI(new_tx_power, current_tx_power, current_rssi, path_loss_e
 
     return new_rssi
 
-def packet_lost():
-    pass
+def packet_lost(packet_rx_power_db : float, min_rx_power_db=-85.0, offset_db=3):
+    return packet_rx_power_db <= min_rx_power_db - offset_db
+
+# This is litterally how it fucking works
+# The matlab codes "signal" is what fraction of transmitt power is received power
+def calculate_received_power(tx_power_dbm: float, path_loss_dbm : float):
+    return tx_power_dbm - path_loss_dbm
+
 
 
 if __name__ == "__main__":
