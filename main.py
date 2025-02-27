@@ -4,12 +4,15 @@ import time
 import csv
 import scipy
 import math
+
+import scipy.io
 from tpc_methods import *
 
 with open("data_csvs/out.csv", newline='') as dataset_csv:
     reader = csv.reader(dataset_csv)
     path_loss_list = list(reader)[0]
     path_loss_list = [float(PL) for PL in path_loss_list]
+    # mat = scipy.io.loadmat("data/20080919-Male1_3kph.mat")
 
 # Time = 60s
 # Carrier frequency = 820MHz
@@ -22,17 +25,15 @@ frame_time = 5.2701 # ms
 frame_interval = 200 # ms
 total_nr_frames = math.ceil(1000 * 60 / frame_interval)
 
-P_min = -25 # dBm
-P_max = 0 # dBm
+tx_power_min = -25 # dBm
+rx_power_max = 0 # dBm
 P_target = -85 # dBm
 offset = 3 # dB
+avg_weight = 0.8 # alpha in Xiaos paper
 
-print(path_loss_list)
-print(np.average(path_loss_list))
-
-TCP_methods : list[TPC_method_interface] = [
+TPC_methods : list[TPC_method_interface] = [
     Constant(),
-    Xiao(),
+    Xiao_aggressive(),
     Gao(),
     Sodhro(),
     Optimal(), # Don't know if we should have this one?
@@ -42,7 +43,7 @@ TCP_methods : list[TPC_method_interface] = [
 for frame_nr in range(total_nr_frames):
 
 
-    for method in TCP_methods:
+    for method in TPC_methods:
 
         # Calcualte the received power of the current frame.
         # Line 333 in Matlab
@@ -58,11 +59,14 @@ for frame_nr in range(total_nr_frames):
         # to the received_power data list of each TPC method.
         method.rx_powers.append(method.current_rx_power)
 
-        # TODO Calculate running average for rx_power and update it
+        # Calculate running average using exponential averaging for rx_power and update it
+        # This is R̅ in Xiao's paper under aggressive TCP method.
+        method.exp_avg_rx_power = (1 - avg_weight)*method.exp_avg_rx_power + avg_weight*method.current_rx_power
 
-        # TODO Calculate the transmisson power of the next frame
-        # Add that transmission power to the transmitted_power data list
-        method.next_transmitt_power()
+        # Calculate the transmisson power of the next frame
+        # Add that transmission power to the tx_power data list history
+        method.current_tx_power = method.next_transmitt_power(P_target, offset)
+        method.tx_powers.append(method.current_tx_power)
 
 # --- Section statistics ---
 
