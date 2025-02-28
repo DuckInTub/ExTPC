@@ -12,7 +12,6 @@ with open("data_csvs/out.csv", newline='') as dataset_csv:
     reader = csv.reader(dataset_csv)
     path_loss_list = list(reader)[0]
     path_loss_list = [float(PL) for PL in path_loss_list] # 60s at 1KHz -> 60_000 values
-    print(len(path_loss_list))
     # mat = scipy.io.loadmat("data/20080919-Male1_3kph.mat")
 
 # Time = 60s
@@ -23,7 +22,7 @@ with open("data_csvs/out.csv", newline='') as dataset_csv:
 # Data rate = 151.8 kbps
 # Transmission power 0 dB
 frame_time = 5.2701 # ms
-frame_interval = 100 # ms
+frame_interval = 200 # ms
 total_nr_frames = math.ceil(1000 * 60 / frame_interval)
 
 tx_power_min = -25 # dBm
@@ -36,18 +35,21 @@ TPC_methods : dict[str, TPC_method_interface] = {
     "Constant": Constant(-10),
     "Xiao_aggressive": Xiao_aggressive(),
     "Gao": Gao(),
-    # "Sodhro": Sodhro(),
+    "Sodhro": Sodhro(),
     # "Optimal": Optimal(), # Don't know if we should have this one?
 }
 
+# For all the TPC methods calculate the supposed tx_power for
+# the first frame. We use the average path loss of the dataset.
+path_loss_avg = np.average(path_loss_list)
+first_tx_power = variables.rx_power_target - path_loss_avg
+for method in TPC_methods.values():
+    method.current_rx_power = variables.rx_power_target
+    method.current_tx_power = first_tx_power
+
 for frame_nr in range(total_nr_frames):
 
-
     for method in TPC_methods.values():
-
-        # TODO Check the initialization state of the simulation.
-        # Reference matlab. Sodhro needs some stuff
-
         # Calcualte the received power of the current frame.
         # Line 333 in Matlab
         start_of_frame = frame_nr*frame_interval
@@ -62,10 +64,9 @@ for frame_nr in range(total_nr_frames):
         # to the received_power data list of each TPC method.
         method.rx_powers.append(method.current_rx_power)
 
-        # Calculate running average using exponential averaging for rx_power and update it
-        # This is R̅ in Xiao's paper under aggressive TCP method.
-        method.exp_avg_rx_power = (1 - avg_weight)*method.exp_avg_rx_power + avg_weight*method.current_rx_power
-        # TODO According to the papers different methods use different ways to calculate the running average
+        # According to the papers different methods use different ways to calculate the running average.
+        # This method computes such averages and other internal state variables. 
+        method.update_internal()
 
         # Calculate the transmisson power of the next frame
         # Add that transmission power to the tx_power data list history
@@ -73,8 +74,23 @@ for frame_nr in range(total_nr_frames):
         method.tx_powers.append(method.current_tx_power)
 
 # --- Section statistics ---
+print(TPC_methods["Constant"].rx_powers)
+print(TPC_methods["Constant"].lost_frames)
+print(len(TPC_methods["Constant"].lost_frames))
+
+print(TPC_methods["Xiao_aggressive"].rx_powers)
+print(TPC_methods["Xiao_aggressive"].lost_frames)
+print(len(TPC_methods["Xiao_aggressive"].lost_frames))
+
 print(TPC_methods["Gao"].rx_powers)
 print(TPC_methods["Gao"].lost_frames)
 print(len(TPC_methods["Gao"].lost_frames))
-# --- Section graphing ---
+
+print(TPC_methods["Sodhro"].rx_powers)
+print(TPC_methods["Sodhro"].lost_frames)
+print(len(TPC_methods["Sodhro"].lost_frames))
+
+# # --- Section graphing ---
+plt.plot(path_loss_list)
+plt.show()
 
