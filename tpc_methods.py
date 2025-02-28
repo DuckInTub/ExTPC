@@ -70,7 +70,7 @@ class Xiao_aggressive(TPC_method_interface):
         if self.exp_avg_rx_power < rx_power_target_low:
             delta = 3 # NOTE: the unit is dBm so this is a doubling (logarithmic scale)
 
-        if rx_power_target_low < self.exp_avg_rx_power < rx_power_target_high:
+        if rx_power_target_low <= self.exp_avg_rx_power <= rx_power_target_high:
             delta = 0
 
         return np.clip(self.current_tx_power + delta, variables.tx_power_min, variables.tx_power_max)
@@ -100,8 +100,8 @@ class Gao(TPC_method_interface):
 class Sodhro(TPC_method_interface):
     def __init__(self, init_rx_power = variables.rx_power_target, init_tx_power = -25):
         super().__init__(init_rx_power, init_tx_power)
-        self.R_latest: float = 0.0
-        self.R_lowest: float = 0.0
+        self.R_latest: float = self.current_rx_power
+        self.R_lowest: float = self.current_rx_power
         self.R_avg: float = 0.0
         self.alpha_1: float = 1.0
         self.alpha_2: float = 0.4

@@ -7,12 +7,16 @@ import math
 
 import scipy.io
 from tpc_methods import *
+from test import simulate_path_loss
+from util_functions import *
 
 with open("data_csvs/out.csv", newline='') as dataset_csv:
     reader = csv.reader(dataset_csv)
     path_loss_list = list(reader)[0]
     path_loss_list = [float(PL) for PL in path_loss_list] # 60s at 1KHz -> 60_000 values
     # mat = scipy.io.loadmat("data/20080919-Male1_3kph.mat")
+
+path_loss_list = simulate_path_loss(1000, 60)
 
 # Time = 60s
 # Carrier frequency = 820MHz
@@ -29,7 +33,6 @@ tx_power_min = -25 # dBm
 rx_power_max = 0 # dBm
 P_target = -85 # dBm
 offset = 3 # dB
-avg_weight = 0.8 # alpha in Xiaos paper
 
 TPC_methods : dict[str, TPC_method_interface] = {
     "Constant": Constant(-10),
@@ -46,6 +49,7 @@ first_tx_power = variables.rx_power_target - path_loss_avg
 for method in TPC_methods.values():
     method.current_rx_power = variables.rx_power_target
     method.current_tx_power = first_tx_power
+    method.update_internal()
 
 for frame_nr in range(total_nr_frames):
 
@@ -74,23 +78,19 @@ for frame_nr in range(total_nr_frames):
         method.tx_powers.append(method.current_tx_power)
 
 # --- Section statistics ---
-print(TPC_methods["Constant"].rx_powers)
-print(TPC_methods["Constant"].lost_frames)
-print(len(TPC_methods["Constant"].lost_frames))
-
-print(TPC_methods["Xiao_aggressive"].rx_powers)
-print(TPC_methods["Xiao_aggressive"].lost_frames)
-print(len(TPC_methods["Xiao_aggressive"].lost_frames))
-
-print(TPC_methods["Gao"].rx_powers)
-print(TPC_methods["Gao"].lost_frames)
-print(len(TPC_methods["Gao"].lost_frames))
-
-print(TPC_methods["Sodhro"].rx_powers)
-print(TPC_methods["Sodhro"].lost_frames)
-print(len(TPC_methods["Sodhro"].lost_frames))
+for name, method in TPC_methods.items():
+    lost_frames = method.lost_frames
+    avg_tx_power = np.average(method.tx_powers)
+    pack_loss_ratio = 100*len(lost_frames) / total_nr_frames
+    power_consumed = sum(map(tx_power_to_mW, method.tx_powers))
+    print(f"{name}: Packet loss {pack_loss_ratio:.2f}% with avg_tx_power: {avg_tx_power:.2f}, and power consumption {power_consumed:.2f}")
 
 # # --- Section graphing ---
-plt.plot(path_loss_list)
+plt.plot(TPC_methods["Constant"].rx_powers, label="Constant")
+plt.plot(TPC_methods["Xiao_aggressive"].rx_powers, label="Xiao_aggressive")
+plt.plot(TPC_methods["Gao"].rx_powers, label="Gao")
+plt.plot(TPC_methods["Sodhro"].rx_powers, label="Sodhro")
+plt.legend()
+plt.grid(True)
 plt.show()
 
