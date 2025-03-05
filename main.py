@@ -4,6 +4,7 @@ import time
 import csv
 import scipy
 import math
+import variables
 
 import scipy.io
 from tpc_methods import *
@@ -32,6 +33,7 @@ total_nr_frames = math.ceil(1000 * 60 / frame_interval)
 tx_power_min = -25 # dBm
 rx_power_max = 0 # dBm
 P_target = -85 # dBm
+packet_loss_RSSI = -88
 offset = 3 # dB
 
 TPC_methods : dict[str, TPC_method_interface] = {
@@ -53,7 +55,7 @@ for method in TPC_methods.values():
 
 for frame_nr in range(total_nr_frames):
 
-    for method in TPC_methods.values():
+    for name, method in TPC_methods.items():
         # Calcualte the received power of the current frame.
         # Line 333 in Matlab
         start_of_frame = frame_nr*frame_interval
@@ -61,7 +63,7 @@ for frame_nr in range(total_nr_frames):
         method.current_rx_power = np.average([method.current_tx_power + path_loss for path_loss in frame_path_losses])
 
         # Calculate weather the current frame will be lost.
-        if method.current_rx_power < P_target - offset:
+        if method.current_rx_power < packet_loss_RSSI:
             method.lost_frames.append(frame_nr)
 
         # Add the received power for the current frame
@@ -74,7 +76,16 @@ for frame_nr in range(total_nr_frames):
 
         # Calculate the transmisson power of the next frame
         # Add that transmission power to the tx_power data list history
-        method.current_tx_power = method.next_transmitt_power(P_target, offset)
+        match name:
+            case "Constant":
+                method.current_tx_power = method.next_transmitt_power(P_target, -85, -80, -25, 0)
+            case "Xiao_aggressive":
+                method.current_tx_power = method.next_transmitt_power(-82.5, -85, -80, -25, 0)
+            case "Gao":
+                method.current_tx_power = method.next_transmitt_power(-82.5, -85, -80, -25, 0)
+            case "Sodhro":
+                method.current_tx_power = method.next_transmitt_power(-85, -88, -83, -25, 0)
+
         method.tx_powers.append(method.current_tx_power)
 
 # --- Section statistics ---
@@ -85,11 +96,13 @@ for name, method in TPC_methods.items():
     power_consumed = sum(map(tx_power_to_mW, method.tx_powers))
     print(f"{name}: Packet loss {pack_loss_ratio:.2f}% with avg_tx_power: {avg_tx_power:.2f}, and power consumption {power_consumed:.2f}")
 
+    plt.plot(method.rx_powers, label=name)
+
+print(f"Number of samples {len(method.rx_powers)}")
 # # --- Section graphing ---
-plt.plot(TPC_methods["Constant"].rx_powers, label="Constant")
-plt.plot(TPC_methods["Xiao_aggressive"].rx_powers, label="Xiao_aggressive")
-plt.plot(TPC_methods["Gao"].rx_powers, label="Gao")
-plt.plot(TPC_methods["Sodhro"].rx_powers, label="Sodhro")
+# plt.plot(path_loss_list)
+plt.xlim(0, 300)
+plt.ylim(-120, -60)
 plt.legend()
 plt.grid(True)
 plt.show()
