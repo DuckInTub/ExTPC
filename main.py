@@ -8,16 +8,16 @@ import variables
 
 import scipy.io
 from tpc_methods import *
-from test import simulate_path_loss
+#from test import simulate_path_loss
 from util_functions import *
 
-with open("data_csvs/out.csv", newline='') as dataset_csv:
+with open("out.csv", newline='') as dataset_csv:
     reader = csv.reader(dataset_csv)
     path_loss_list = list(reader)[0]
     path_loss_list = [float(PL) for PL in path_loss_list] # 60s at 1KHz -> 60_000 values
     # mat = scipy.io.loadmat("data/20080919-Male1_3kph.mat")
 
-path_loss_list = simulate_path_loss(1000, 60)
+# path_loss_list = simulate_path_loss(1000, 60)
 
 # Time = 60s
 # Carrier frequency = 820MHz
