@@ -1,31 +1,36 @@
 from abc import ABC, abstractmethod
 import numpy as np
-import variables
 import math
 
 class TPC_method_interface(ABC):
-    def __init__(self, init_rx_power:float = variables.rx_power_target, init_tx_power: float = -25):
+    def __init__(self):
         # Define the parameters with their default types
         self.rx_powers: list[float] = []
         self.tx_powers: list[float] = []
         self.lost_frames: list[int] = []
-        self.current_rx_power: float = init_rx_power
-        self.current_tx_power: float = init_tx_power
+        self.current_rx_power: float = -60
+        self.current_tx_power: float = -25
 
     @abstractmethod
-    def next_transmitt_power(self, rx_power_target_low : float, rx_power_target_high : float) -> float:
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high, min_tx_power, max_tx_power) -> float:
         """
         Calculate and update the next transmitted power based on the internal history
         of the method and given bounds for rx_power target.
 
         Parameters:
         ----------
-        rx_power_target_low : float
-            The lower bound of the desired received power range dBm.
-    
-        rx_power_target_high : float
-            The upper bound of the desired received power range dBm.
+        rx_power_target: float
+            The desired received power dBm.
 
+        min_tx_power: float
+            The minimum possible transmission power dBm.
+
+        max_tx_power: float
+            The maximum possible transmission power dBm.
+
+        offset : float
+            Offset to assign a range for rx_power_target dBm.
+    
         Returns:
         -------
         float
@@ -43,63 +48,66 @@ class TPC_method_interface(ABC):
 
 
 class Constant(TPC_method_interface):
-    def __init__(self, constant_power : float, init_rx_power = variables.rx_power_target, init_tx_power = -25):
-        super().__init__(init_rx_power, init_tx_power)
+    def __init__(self, constant_power : float):
+        super().__init__()
         self.tx_power_constant = constant_power
 
     def update_internal(self):
         pass
 
-    def next_transmitt_power(self, rx_power_target_low : float, rx_power_target_high : float) -> float:
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high, min_tx_power, max_tx_power):
         return self.tx_power_constant # dBm
 
 class Xiao_aggressive(TPC_method_interface):
-    def __init__(self, avg_weight=0.8, init_rx_power = variables.rx_power_target, init_tx_power = -25):
-        super().__init__(init_rx_power, init_tx_power)
-        self.avg_weight = avg_weight
+    def __init__(self, avg_weight=0.8):
+        super().__init__()
+        self.avg_weight = avg_weight # α in Xiaos paper
         self.exp_avg_rx_power: float = 0.0 # R̅ in Xiaos paper
 
     def update_internal(self):
         self.exp_avg_rx_power = (1 - self.avg_weight)*self.exp_avg_rx_power + self.avg_weight*self.current_rx_power
 
-    def next_transmitt_power(self, rx_power_target_low : float, rx_power_target_high) -> float:
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high, min_tx_power, max_tx_power) -> float:
 
-        if self.exp_avg_rx_power > rx_power_target_high:
+        if self.exp_avg_rx_power > rx_target_high:
             delta = -1
 
-        if self.exp_avg_rx_power < rx_power_target_low:
+        if self.exp_avg_rx_power < rx_target_low:
             delta = 3 # NOTE: the unit is dBm so this is a doubling (logarithmic scale)
 
-        if rx_power_target_low <= self.exp_avg_rx_power <= rx_power_target_high:
+        if rx_target_low <= self.exp_avg_rx_power <= rx_target_high:
             delta = 0
 
-        return np.clip(self.current_tx_power + delta, variables.tx_power_min, variables.tx_power_max)
+        return np.clip(self.current_tx_power + delta, min_tx_power, max_tx_power)
 
 class Gao(TPC_method_interface):
-    def __init__(self, filter_coeff=0.8, init_rx_power = variables.rx_power_target, init_tx_power = -25):
-        super().__init__(init_rx_power, init_tx_power)
+    def __init__(self, filter_coeff=0.8):
+        super().__init__()
         self.filter_coeff: float = filter_coeff
         self.average_RSSI: float = 0.0
+        self.tx_power_control_steps = [-3, -2, -1, 0, 1, 2, 3, 4]
 
     def update_internal(self):
         self.average_RSSI = self.current_rx_power + (1 - self.filter_coeff)*self.average_RSSI
 
 
-    def next_transmitt_power(self, rx_power_target_low : float, rx_power_target_high) -> float:
-        tx_power_control_steps = [-3, -2, -1, 0, 1, 2, 3, 4]
-        power_target = -82.5
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high, min_tx_power, max_tx_power) -> float:
         
-        if rx_power_target_low < self.average_RSSI < rx_power_target_high:
-            index_of_min = np.argmin([abs(power_target - self.average_RSSI - step) for step in tx_power_control_steps])
-            delta = tx_power_control_steps[index_of_min]
-        else:
+        if self.average_RSSI > rx_target_high or self.average_RSSI < rx_target_low:
+            args = [step for step in self.tx_power_control_steps if step > rx_target - self.average_RSSI]
+            if not args:
+                return self.current_tx_power
+
+            index_of_min = np.argmin([abs(rx_target - self.average_RSSI - step) for step in args])
+            delta = self.tx_power_control_steps[index_of_min]
+        elif rx_target_low <= self.average_RSSI < rx_target_high:
             delta = 0
 
-        return np.clip(self.current_tx_power + delta, variables.tx_power_min, variables.tx_power_max)
+        return np.clip(self.current_tx_power + delta, min_tx_power, max_tx_power)
 
 class Sodhro(TPC_method_interface):
-    def __init__(self, init_rx_power = variables.rx_power_target, init_tx_power = -25):
-        super().__init__(init_rx_power, init_tx_power)
+    def __init__(self):
+        super().__init__()
         self.R_latest: float = self.current_rx_power
         self.R_lowest: float = self.current_rx_power
         self.R_avg: float = 0.0
@@ -108,6 +116,7 @@ class Sodhro(TPC_method_interface):
         self.tx_power_control_steps = list(range(-31, 32))
         self.TRL = -88
         self.TRH = -83
+        self.R_target = -85
 
     def update_internal(self):
         self.R_latest = self.R_lowest
@@ -115,21 +124,22 @@ class Sodhro(TPC_method_interface):
 
         if self.R_latest > self.R_avg:
             self.R_avg = self.R_latest+(1-self.alpha_1)*self.R_lowest
-        elif self.R_latest == self.R_avg:
-            pass
-        else:
+        if self.R_latest < self.R_avg:
             self.R_avg = self.R_latest+(1-self.alpha_2)*self.R_lowest
 
 
-    def next_transmitt_power(self, rx_power_target_low: float, rx_power_target_high : float) -> float:
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high, min_tx_power, max_tx_power) -> float:
         if self.R_avg > self.TRH or self.R_avg < self.TRL:
+            args = [step for step in self.tx_power_control_steps if step > self.R_target - self.R_avg]
+            if not args:
+                return self.current_tx_power
             # Step 7 in sodhro Fig 8.
-            index_of_min = np.argmin([math.sqrt( (variables.rx_power_target - self.R_avg - step) ** 2) for step in self.tx_power_control_steps]) 
+            index_of_min = np.argmin([math.sqrt( (self.R_target - self.R_avg - step) ** 2) for step in args])
             delta = self.tx_power_control_steps[index_of_min]
         else:
             delta = 0
 
-        return np.clip(self.current_tx_power + delta, variables.tx_power_min, variables.tx_power_max)
+        return np.clip(self.current_tx_power + delta, min_tx_power, max_tx_power)
 
 
 
