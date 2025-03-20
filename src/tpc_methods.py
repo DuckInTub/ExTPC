@@ -8,6 +8,7 @@ class TPC_method_interface(ABC):
         self.rx_powers: list[float] = []
         self.tx_powers: list[float] = []
         self.lost_frames: list[int] = []
+        self.latencies: list[float] = []  # Added latency tracking
         self.current_rx_power: float = -60
         self.current_tx_power: float = -25
 
@@ -133,13 +134,9 @@ class Sodhro(TPC_method_interface):
             args = [step for step in self.tx_power_control_steps if step > self.R_target - self.R_avg]
             if not args:
                 return self.current_tx_power
-            # Step 7 in sodhro Fig 8.
-            index_of_min = np.argmin([math.sqrt( (self.R_target - self.R_avg - step) ** 2) for step in args])
+            index_of_min = np.argmin([math.sqrt((self.R_target - self.R_avg - step)**2) for step in args])
             delta = self.tx_power_control_steps[index_of_min]
         else:
             delta = 0
 
         return np.clip(self.current_tx_power + delta, min_tx_power, max_tx_power)
-
-
-
