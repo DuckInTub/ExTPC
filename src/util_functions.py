@@ -119,7 +119,8 @@ if __name__ == "__main__":
     pl = simulate_path_loss(sample_rate, duration)
 
     from util_functions import *
-    path_loss_list = load_mat_file("data/20080919-Male1_3kph.mat")
+    from pathlib import Path
+    path_loss_list = load_mat_file(Path("..") / "data/20080919-Male1_3kph.mat")
 
     plt.figure(figsize=(10, 4))  # Ensure consistent figure size
     plt.plot(path_loss_list, color='b', linewidth=1, label="Real")

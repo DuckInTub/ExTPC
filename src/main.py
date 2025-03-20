@@ -28,7 +28,7 @@ P_target = -85 # dBm
 packet_loss_RSSI = -88
 offset = 3 # dB
 
-TPC_methods : dict[str, TPC_method_interface] = {
+TPC_methods : dict[str, TPCMethodInterface] = {
     "Constant": Constant(-10),
     "Xiao_aggressive": Xiao_aggressive(),
     "Gao": Gao(),
@@ -49,7 +49,6 @@ for frame_nr in range(total_nr_frames):
 
     for name, method in TPC_methods.items():
         # Calcualte the received power of the current frame.
-        # Line 333 in Matlab
         start_of_frame = frame_nr*frame_interval
         frame_path_losses = path_loss_list[start_of_frame:start_of_frame+math.floor(frame_time)]
         method.current_rx_power = np.average([method.current_tx_power + path_loss for path_loss in frame_path_losses])
@@ -76,7 +75,7 @@ for frame_nr in range(total_nr_frames):
             case "Gao":
                 method.current_tx_power = method.next_transmitt_power(-82.5, -85, -80, -25, 0)
             case "Sodhro":
-                method.current_tx_power = method.next_transmitt_power(-85, -88, -83, -25, 0)
+                method.current_tx_power = method.next_transmitt_power(-80, -88, -80, -25, 0)
 
         method.tx_powers.append(method.current_tx_power)
 
