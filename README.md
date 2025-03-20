@@ -10,17 +10,18 @@ The thesis is centered around the application of Transmission Power Control (TPC
 For the purposes of this simulation code the different TPC algorithms are akin to feedback loops.
 The feedback process is based on an input signal of the pathloss for the channel over time. 
 This is used to calculate the received power at the receiver which we want to preserve above -85dBm by adjusting the transmission power.
-<img src="media/equation.png" alt="Equation used for the feedback loop" width="200" height="150">
+<img src="media/equation.png" alt="Equation used for the feedback loop" width="400" height="150">
 
-The pathloss signal is partly sourced from  the [“Body area network radio channel measurement set”](https://data.csiro.au/collection/csiro:18350v1) collected by [Commonwealth Scientific and Industrial Research Organization (CSIRO)]
-(https://data.csiro.au/) and licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) which was used in the python simulation. 
+The pathloss signal is partly sourced from  the [“Body area network radio channel measurement set”](https://data.csiro.au/collection/csiro:18350v1) collected by 
+[Commonwealth Scientific and Industrial Research Organization (CSIRO)](https://data.csiro.au/) and licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) which was used in the python simulation. 
 <img src="media/real_vs_simulated.png" alt="Real vs simulated path loss signal" width="1000" height="400">
 
 # Repository structure
+The following is the structure of the repository.
 
 ## Data
-This folder simply containts the .mat files from the [“Body area network radio channel measurement set”](https://data.csiro.au/collection/csiro:18350v1) collected by [Commonwealth Scientific and Industrial Research Organization (CSIRO)]
-(https://data.csiro.au/) and licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) which was used in the python simulation.
+This folder simply containts the .mat files from the [“Body area network radio channel measurement set”](https://data.csiro.au/collection/csiro:18350v1) collected by 
+[Commonwealth Scientific and Industrial Research Organization (CSIRO)](https://data.csiro.au/) and licensed under [CC BY-SA 4.0](https://creativecommons.org/licenses/by-sa/4.0/) which was used in the python simulation.
 ## Media
 This folder includes figures generated from or related to the code. Some of the figures are present in this markdown document, others are not.
 ## Src
