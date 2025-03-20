@@ -4,9 +4,6 @@ from scipy.stats import norm, gamma
 import scipy.io
 from pathlib import Path
 
-def packet_lost(packet_rx_power_db : float, min_rx_power_db: float =-85.0, offset_db: float=3) -> bool:
-    return packet_rx_power_db <= min_rx_power_db - offset_db
-
 def calculate_received_power(tx_power_dbm: float, path_loss_dbm : float):
     return tx_power_dbm - path_loss_dbm
 

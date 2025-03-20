@@ -171,7 +171,7 @@ class Sodhro(TPCMethodInterface):
                 return self.current_tx_power
               
             # Step 7 in sodhro Fig 8.
-            index_of_min = np.argmin([math.sqrt((self.R_target - self.R_avg - step)**2) for step in args])
+            index_of_min = np.argmin([math.sqrt((R_target - self.R_avg - step)**2) for step in args])
   
             delta = self.tx_power_control_steps[index_of_min]
         else:
