@@ -25,7 +25,7 @@ offset = 3  # dB
 processing_time = 3  # ms
 ack_frame_time = 0.2  # ms
 
-TPC_methods : dict[str, TPCMethodInterface] = {
+TPC_methods: dict[str, TPCMethodInterface] = {
     "Constant": Constant(-10),
     "Xiao_aggressive": Xiao_aggressive(),
     "Gao": Gao(),
@@ -43,22 +43,23 @@ for method in TPC_methods.values():
 # Main simulation loop
 for frame_nr in range(total_nr_frames):
     for name, method in TPC_methods.items():
-
-        # Calcualte the received power of the current frame.
         start_of_frame = frame_nr * frame_interval
         frame_path_losses = path_loss_list[start_of_frame:start_of_frame + math.floor(frame_time)]
         method.current_rx_power = np.average([method.current_tx_power + path_loss for path_loss in frame_path_losses])
 
         # Check if packet is lost in the current frame
         packet_lost = method.current_rx_power < packet_loss_RSSI
+
         if packet_lost:
+            method.consecutive_lost_frames += 1
             method.lost_frames.append(frame_nr)
+        else:
+            extra_delay = method.consecutive_lost_frames * 200  # ms
+            latency = frame_time + processing_time + ack_frame_time + extra_delay
+            method.latencies.append(latency)
+            method.consecutive_lost_frames = 0
 
-        # Latency calculation
-        latency = frame_time + processing_time + ack_frame_time + (200 if packet_lost else 0)
-        method.latencies.append(latency)
-
-        # Update received power
+        # Record the received power regardless of reception.
         method.rx_powers.append(method.current_rx_power)
 
         method.update_internal()
@@ -83,9 +84,17 @@ for name, method in TPC_methods.items():
     avg_tx_power = np.average(method.tx_powers)
     packet_loss_ratio = 100 * len(method.lost_frames) / total_nr_frames
     power_consumed = frame_time * sum(map(tx_power_to_mW, method.tx_powers))
-    avg_latency = np.average(method.latencies)
-
-    print(f"{name}: Packet loss {packet_loss_ratio:.2f}% with avg_tx_power: {avg_tx_power:.2f} dBm, power consumption: {power_consumed:.2f} mW, avg latency: {avg_latency:.2f} ms")
+    
+    if method.latencies:
+        avg_latency = np.average(method.latencies)
+        latency_array = np.array(method.latencies)
+        jitter = np.sqrt(np.mean((latency_array - avg_latency) ** 2))
+    else:
+        avg_latency = float('nan')
+        jitter = float('nan')
+    
+    print(f"{name}: Packet loss {packet_loss_ratio:.2f}% with avg_tx_power: {avg_tx_power:.2f} dBm, "
+          f"power consumption: {power_consumed:.2f} mW, avg latency: {avg_latency:.2f} ms, jitter: {jitter:.2f} ms")
 
     plt.plot(method.rx_powers, label=name)
 
