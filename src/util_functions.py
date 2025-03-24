@@ -64,7 +64,7 @@ def simulate_path_loss(sample_rate : int, time : float) -> np.ndarray:
     fading_dB = 20 * np.log10(gamma_samples)
     
     # Add a baseline path loss offset (choose based on your reference; here we use -60 dB)
-    baseline_loss = -60
+    baseline_loss = -52
     path_loss = baseline_loss + fading_dB
     
     return path_loss

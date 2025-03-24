@@ -9,7 +9,8 @@ from util_functions import *
 # Load data from .mat
 from pathlib import Path
 path = Path("..") / "data" / "20080919-Male1_3kph.mat"
-path_loss_list = load_mat_file(path)
+# path_loss_list = load_mat_file(path)
+path_loss_list = simulate_path_loss(1000, 60)
 
 # Parameters
 frame_time = 5.2701  # ms
@@ -73,7 +74,7 @@ for frame_nr in range(total_nr_frames):
             case "Gao":
                 method.current_tx_power = method.next_transmitt_power(-82.5, -85, -80, -25, 0)
             case "Sodhro":
-                method.current_tx_power = method.next_transmitt_power(-80, -88, -80, -25, 0)
+                method.current_tx_power = method.next_transmitt_power(-85, -88, -83, -25, 0)
 
         method.tx_powers.append(method.current_tx_power)
 
@@ -101,7 +102,7 @@ for name, method in TPC_methods.items():
 print(f"Number of samples {len(method.rx_powers)}")
 
 # Plot settings
-plt.xlim(0, 100)
+plt.xlim(0, len(method.rx_powers))
 plt.ylim(-120, -60)
 plt.title("Professional Matplotlib Figure", fontsize=16, fontweight="bold")
 plt.xlabel("Frame nr", fontsize=14, fontweight="bold")
