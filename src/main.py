@@ -9,13 +9,14 @@ from util_functions import *
 # Load data from .mat
 from pathlib import Path
 path = Path("..") / "data" / "20080919-Male1_3kph.mat"
-# path_loss_list = load_mat_file(path)
-path_loss_list = simulate_path_loss(1000, 60)
+path_loss_list = load_mat_file(path)
+# path_loss_list = simulate_path_loss(1000, 60)
 
 # Parameters
 frame_time = 5.2701  # ms
 frame_interval = 200  # ms
-total_nr_frames = math.ceil(1000 * 60 / frame_interval)
+total_nr_frames = math.ceil(len(path_loss_list) / frame_interval)
+print(f"Total number of frames: {total_nr_frames}")
 
 tx_power_min = -25  # dBm
 rx_power_max = 0  # dBm
@@ -35,10 +36,9 @@ TPC_methods: dict[str, TPCMethodInterface] = {
 
 # Initial transmission power setup
 path_loss_avg = np.average(path_loss_list)
-first_tx_power = variables.rx_power_target - path_loss_avg
 for method in TPC_methods.values():
-    method.current_rx_power = variables.rx_power_target
-    method.current_tx_power = first_tx_power
+    method.current_rx_power = -10 + path_loss_avg
+    method.current_tx_power = -10
     method.update_internal()
 
 # Main simulation loop
@@ -85,6 +85,7 @@ for name, method in TPC_methods.items():
     avg_tx_power = np.average(method.tx_powers)
     packet_loss_ratio = 100 * len(method.lost_frames) / total_nr_frames
     power_consumed = frame_time * sum(map(tx_power_to_mW, method.tx_powers))
+    power_consumed /= 1000
     
     if method.latencies:
         avg_latency = np.average(method.latencies)
@@ -95,7 +96,7 @@ for name, method in TPC_methods.items():
         jitter = float('nan')
     
     print(f"{name}: Packet loss {packet_loss_ratio:.2f}% with avg_tx_power: {avg_tx_power:.2f} dBm, "
-          f"power consumption: {power_consumed:.2f} mW, avg latency: {avg_latency:.2f} ms, jitter: {jitter:.2f} ms")
+          f"power consumption: {power_consumed:.2f} J, avg latency: {avg_latency:.2f} ms, jitter: {jitter:.2f} ms")
 
     plt.plot(method.rx_powers, label=name)
 
