@@ -2,6 +2,9 @@ from abc import ABC, abstractmethod
 import numpy as np
 import math
 
+MIN_TX_POWER = -25
+MAX_TX_POWER = 0
+
 class TPCMethodInterface(ABC):
     """
     An abstract base class defining the interface for Transmission Power Control (TPC) methods.
@@ -27,27 +30,28 @@ class TPCMethodInterface(ABC):
         current_tx_power : float
             The current transmission power in dBm.
     """
-    def __init__(self):
+    def __init__(self, nr_samples):
         """
         Initializes the TPC method with default power values and empty tracking lists.
         """
-        self.rx_powers: list[float] = []
-        self.tx_powers: list[float] = []
-        self.lost_frames: list[int] = []
-        self.latencies: list[float] = []
+        self.rx_powers = np.zeros(nr_samples, dtype=np.int8)
+        self.tx_powers = np.zeros(nr_samples, dtype=np.int8)
+        self.lost_frames: int = 0
+        self.latencies: list[int] = []
         self.current_rx_power: float = -60
-        self.current_tx_power: float = -25
+        self.current_tx_power: float = -10
         self.consecutive_lost_frames: int = 0
-        self.jitter_values: list[float] = []
+
+    def update_stats(self, index):
+        self.rx_powers[index] = self.current_rx_power
+        self.tx_powers[index] = self.current_tx_power
 
     @abstractmethod
     def next_transmitt_power(
         self, 
         rx_target: float, 
         rx_target_low: float, 
-        rx_target_high: float, 
-        min_tx_power: float, 
-        max_tx_power: float
+        rx_target_high: float
     ) -> float:
         """
         Calculate and update the next transmitted power based on the internal history
@@ -62,16 +66,9 @@ class TPCMethodInterface(ABC):
 
             rx_target_high : float
                 The highest desired received power in dBm.
-
-            min_tx_power : float
-                The minimum possible transmission power dBm.
-
-            max_tx_power : float
-                The maximum possible transmission power dBm.
-
         Returns:
             float
-                The computed next transmission power level in dBm
+                The computed next transmission power level in dBm in range [-25, 0]
         """
         pass
 
@@ -83,38 +80,49 @@ class TPCMethodInterface(ABC):
         """
         pass
 
+class Stupid(TPCMethodInterface):
+    def __init__(self, nr_of_samples):
+        super().__init__(nr_of_samples)
+
+    def update_internal(self):
+        pass
+
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+        current_path_loss = self.current_tx_power - self.current_rx_power
+        return np.clip(rx_target + current_path_loss, MIN_TX_POWER, MAX_TX_POWER)
+
 class Constant(TPCMethodInterface):
-    def __init__(self, constant_power : float):
-        super().__init__()
+    def __init__(self, constant_power : float, nr_of_samples):
+        super().__init__(nr_of_samples)
         self.tx_power_constant = constant_power
 
     def update_internal(self):
         pass
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high, min_tx_power, max_tx_power):
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
         return self.tx_power_constant # dBm
 
 class Xiao_aggressive(TPCMethodInterface):
-    def __init__(self, avg_weight=0.8):
-        super().__init__()
+    def __init__(self, nr_of_samples, avg_weight=0.8):
+        super().__init__(nr_of_samples)
         self.avg_weight = avg_weight # α in Xiaos paper
         self.exp_avg_rx_power: float = 0.0 # R̅ in Xiaos paper
 
     def update_internal(self):
         self.exp_avg_rx_power = (1 - self.avg_weight)*self.exp_avg_rx_power + self.avg_weight*self.current_rx_power
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high, min_tx_power, max_tx_power) -> float:
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
         if self.exp_avg_rx_power > rx_target_high:
             delta = -1
         if self.exp_avg_rx_power < rx_target_low:
             delta = 3
         if rx_target_low <= self.exp_avg_rx_power <= rx_target_high:
             delta = 0
-        return np.clip(self.current_tx_power + delta, min_tx_power, max_tx_power)
+        return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
 
 class Gao(TPCMethodInterface):
-    def __init__(self, filter_coeff=0.8):
-        super().__init__()
+    def __init__(self, nr_of_samples, filter_coeff=0.8):
+        super().__init__(nr_of_samples)
         self.filter_coeff: float = filter_coeff
         self.average_RSSI: float = 0.0
         self.tx_power_control_steps = [-3, -2, -1, 0, 1, 2, 3, 4]
@@ -122,7 +130,7 @@ class Gao(TPCMethodInterface):
     def update_internal(self):
         self.average_RSSI = self.current_rx_power + (1 - self.filter_coeff)*self.average_RSSI
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high, min_tx_power, max_tx_power) -> float:
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
         if self.average_RSSI > rx_target_high or self.average_RSSI < rx_target_low:
             args = [step for step in self.tx_power_control_steps if step > rx_target - self.average_RSSI]
             if not args:
@@ -131,7 +139,7 @@ class Gao(TPCMethodInterface):
             delta = self.tx_power_control_steps[index_of_min]
         elif rx_target_low <= self.average_RSSI < rx_target_high:
             delta = 0
-        return np.clip(self.current_tx_power + delta, min_tx_power, max_tx_power)
+        return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
 
 class Sodhro(TPCMethodInterface):
     """
@@ -144,8 +152,8 @@ class Sodhro(TPCMethodInterface):
     ALPHA2: float = 0.4  # averaging weight for bad channel
     POSSIBLE_DPS: list[int] = list(range(-31, 32))  # discrete ΔP values
 
-    def __init__(self):
-        super().__init__()
+    def __init__(self, nr_of_samples):
+        super().__init__(nr_of_samples)
         # Initialize the running average (R̄) as the current rx power.
         self.R_avg: float = self.current_rx_power
         # TRH_var (the upper variable threshold) will be computed in update_internal.
@@ -159,8 +167,6 @@ class Sodhro(TPCMethodInterface):
         rx_target: float, 
         rx_target_low: float, 
         rx_target_high: float, 
-        min_tx_power: float, 
-        max_tx_power: float
     ) -> float:
         # Store the target and fixed lower threshold (assumed constant)
         self.R_target = rx_target
@@ -174,8 +180,9 @@ class Sodhro(TPCMethodInterface):
         R_latest = self.current_rx_power
 
         # Determine R_lowest: use the minimum RSSI from the history (if available)
-        if self.rx_powers:
+        if any(self.rx_powers != 0):
             R_lowest = min(self.rx_powers)
+            assert R_lowest != 0
         else:
             R_lowest = R_latest  # fallback if no history exists
 
@@ -206,11 +213,7 @@ class Sodhro(TPCMethodInterface):
             DeltaP = 0
 
         # Adjust the transmission power based on ΔP while respecting bounds.
-        new_tx_power = self.current_tx_power + DeltaP
-        if new_tx_power > max_tx_power:
-            new_tx_power = max_tx_power
-        elif new_tx_power < min_tx_power:
-            new_tx_power = min_tx_power
+        new_tx_power = np.clip(self.current_tx_power + DeltaP, MIN_TX_POWER, MAX_TX_POWER)
 
         # Update the internal current transmit power.
         self.current_tx_power = new_tx_power
@@ -222,8 +225,8 @@ class Sodhro(TPCMethodInterface):
         if self.TRL is None:
             self.TRL = -88
 
-        if self.rx_powers:
-            n = len(self.rx_powers)
+        if any(self.rx_powers != 0):
+            n = sum(self.rx_powers != 0)
             # Compute the standard deviation (s) of the RSSI samples around the running average.
             s = math.sqrt(sum((r - self.R_avg) ** 2 for r in self.rx_powers) / n)
             self.TRH_var = self.TRL + s
