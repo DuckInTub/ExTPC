@@ -142,92 +142,38 @@ class Gao(TPCMethodInterface):
         return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
 
 class Sodhro(TPCMethodInterface):
-    """
-    An implementation of the energy-efficient adaptive TPC algorithm by Sodhro.
-    Internal constants (averaging weights and allowed ΔP values) are defined in the class.
-    The algorithm updates the running RSSI average and then computes the adjustment ΔP.
-    """
-    # Internal constants (set as per the paper’s recommendations)
-    ALPHA1: float = 1.0  # averaging weight for good channel
-    ALPHA2: float = 0.4  # averaging weight for bad channel
-    POSSIBLE_DPS: list[int] = list(range(-31, 32))  # discrete ΔP values
 
-    def __init__(self, nr_of_samples):
-        super().__init__(nr_of_samples)
-        # Initialize the running average (R̄) as the current rx power.
-        self.R_avg: float = self.current_rx_power
-        # TRH_var (the upper variable threshold) will be computed in update_internal.
-        self.TRH_var: float = None  
-        # We will store the target and lower threshold when next_transmitt_power is called.
-        self.R_target: float = None  # RSSI target
-        self.TRL: float = None       # fixed lower threshold
+    def __init__(self, nr_samples):
+        super().__init__(nr_samples)
+        self.R_avg = 0
+        self.R_lowest = -80 # Warning STUPID name
+        self.R_latest = -80
 
-    def next_transmitt_power(
-        self, 
-        rx_target: float, 
-        rx_target_low: float, 
-        rx_target_high: float, 
-    ) -> float:
-        # Store the target and fixed lower threshold (assumed constant)
-        self.R_target = rx_target
-        self.TRL = rx_target_low
-        
-        # If TRH_var has not been computed yet, initialize it using rx_target_high.
-        if self.TRH_var is None:
-            self.TRH_var = rx_target_high
+    def update_internal(self):
+        self.R_lowest = self.R_latest 
+        self.R_latest = self.current_rx_power
+        ALPHA_1 = 1.0
+        ALPHA_2 = 0.4
 
-        # Determine R_latest: take current_rx_power (alternatively, self.rx_powers[-1] could be used)
-        R_latest = self.current_rx_power
+        if self.R_latest > self.R_avg:
+            self.R_avg = self.R_latest + (1 - ALPHA_1) * self.R_lowest
+        elif self.R_latest < self.R_avg:
+            self.R_avg = self.R_latest + (1 - ALPHA_2) * self.R_lowest
 
-        # Determine R_lowest: use the minimum RSSI from the history (if available)
-        if any(self.rx_powers != 0):
-            R_lowest = min(self.rx_powers)
-            assert R_lowest != 0
-        else:
-            R_lowest = R_latest  # fallback if no history exists
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+        P_DELTAS = list(range(-31, 32))
+        R_target = rx_target
+        TRH_var = rx_target_high
+        TRL = rx_target_low
 
-        # Update the running average R̄ as per the paper:
-        if R_latest > self.R_avg:
-            self.R_avg = R_latest + (1 - self.ALPHA1) * R_lowest
-        elif R_latest < self.R_avg:
-            self.R_avg = R_latest + (1 - self.ALPHA2) * R_lowest
-        else:
-            # If equal, do nothing (per instructions)
-            pass
+        if self.R_avg > TRH_var or self.R_avg < TRL:
+            args = [delta for delta in P_DELTAS if delta > R_target - self.R_avg]
+            if not args:
+                return self.current_tx_power
 
-        # Compute ΔP based on the updated R̄.
-        if self.R_avg > self.TRH_var or self.R_avg < self.TRL:
-            # Calculate the gap between the target and the average
-            target_gap = self.R_target - self.R_avg
-            # From the discrete set, filter ΔP values that exceed the target gap.
-            candidates = [dp for dp in self.POSSIBLE_DPS if dp > target_gap]
-            if candidates:
-                # Choose the candidate that minimizes the absolute difference.
-                DeltaP = min(candidates, key=lambda dp: abs(dp - target_gap))
-            else:
-                DeltaP = 0
-        elif self.TRL <= self.R_avg <= self.TRH_var:
-            DeltaP = 0
-        else:
-            # Should not reach here; default to no change.
-            DeltaP = 0
+            indx = np.argmin(abs(R_target - self.R_avg - arg) for arg in args)
+            delta_P = args[indx]
+        elif TRL <= self.R_avg <= TRH_var:
+            delta_P = 0
 
-        # Adjust the transmission power based on ΔP while respecting bounds.
-        new_tx_power = np.clip(self.current_tx_power + DeltaP, MIN_TX_POWER, MAX_TX_POWER)
-
-        # Update the internal current transmit power.
-        self.current_tx_power = new_tx_power
-
-        return self.current_tx_power
-
-    def update_internal(self) -> None:
-        # Ensure that we have a fixed lower threshold; if not, set a default (e.g., -88 dBm).
-        if self.TRL is None:
-            self.TRL = -88
-
-        if any(self.rx_powers != 0):
-            n = sum(self.rx_powers != 0)
-            # Compute the standard deviation (s) of the RSSI samples around the running average.
-            s = math.sqrt(sum((r - self.R_avg) ** 2 for r in self.rx_powers) / n)
-            self.TRH_var = self.TRL + s
-        # If no RSSI history exists, leave TRH_var unchanged.
+        return np.clip(self.current_tx_power + delta_P, MIN_TX_POWER, MAX_TX_POWER)

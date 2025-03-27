@@ -9,7 +9,8 @@ from util_functions import *
 from pathlib import Path
 path = Path("..") / "data" / "20080919-Male1_3kph.mat"
 path_loss_list = load_mat_file(path)
-# path_loss_list = simulate_path_loss(1000, 60)
+# print(np.std(path_loss_list))
+# path_loss_list = simulate_path_loss(1000, 600)
 
 # Parameters
 frame_time = 5.2701  # ms
@@ -20,7 +21,7 @@ print(f"Total number of frames: {total_nr_frames}")
 tx_power_min = -25  # dBm
 rx_power_max = 0  # dBm
 P_target = -85  # dBm
-packet_loss_RSSI = -88
+packet_loss_RSSI = -90
 offset = 3  # dB
 
 processing_time = 3  # ms
@@ -32,6 +33,7 @@ TPC_methods: dict[str, TPCMethodInterface] = {
     "Gao": Gao(total_nr_frames),
     "Sodhro": Sodhro(total_nr_frames),
 }
+print(f"Initialized TPC classes")
 
 # Initial transmission power setup
 path_loss_avg = np.average(path_loss_list)
@@ -70,7 +72,7 @@ for frame_nr in range(total_nr_frames):
             case "Gao":
                 method.current_tx_power = method.next_transmitt_power(-82.5, -85, -80)
             case "Sodhro":
-                method.current_tx_power = method.next_transmitt_power(-85, -88, -83)
+                method.current_tx_power = method.next_transmitt_power(-85, -88, -82.3) # Values come from precalculation
 
         # Update method stats
         method.update_stats(frame_nr)
@@ -102,4 +104,3 @@ plt.xlabel("Frame nr", fontsize=14, fontweight="bold")
 plt.ylabel("RSSI (dBm)", fontsize=14, fontweight="bold")
 plt.legend()
 plt.grid(True)
-plt.show()
