@@ -26,6 +26,7 @@ processing_time = 3  # ms
 ack_frame_time = 0.2  # ms
 
 TPC_methods: dict[str, TPCMethodInterface] = {
+    "Optimal": Optimal(path_loss_list, frame_interval, frame_time, packet_loss_RSSI, total_nr_frames),
     "Constant": Constant(-10, total_nr_frames),
     "Xiao_aggressive": Xiao_aggressive(total_nr_frames),
     "Gao": Gao(total_nr_frames),
@@ -35,7 +36,6 @@ TPC_methods: dict[str, TPCMethodInterface] = {
 
 # Initial transmission power setup
 path_loss_avg = np.average(path_loss_list)
-assert path_loss_avg < 0
 for method in TPC_methods.values():
     method.current_rx_power = -10 + path_loss_avg
     method.current_tx_power = -10
@@ -47,9 +47,9 @@ for frame_nr in range(total_nr_frames):
         start_of_frame = frame_nr * frame_interval
         frame_path_losses = path_loss_list[start_of_frame:start_of_frame + math.floor(frame_time)]
         path_loss = np.average(frame_path_losses)
-        opt = packet_loss_RSSI - path_loss + 1
+        opt = packet_loss_RSSI - path_loss + 0
         assert opt + path_loss >= packet_loss_RSSI
-        method.current_rx_power = np.average([method.current_tx_power + path_loss for path_loss in frame_path_losses])
+        method.current_rx_power = method.current_tx_power + path_loss
 
         # Check if packet is lost in the current frame
         packet_lost = method.current_rx_power < packet_loss_RSSI
@@ -67,6 +67,8 @@ for frame_nr in range(total_nr_frames):
 
         # Transmission power calculation as usual
         match name:
+            case "Optimal":
+                method.current_tx_power = method.next_transmitt_power(P_target, -85, -80)
             case "Constant":
                 method.current_tx_power = method.next_transmitt_power(P_target, -85, -80)
             case "Xiao_aggressive":

@@ -136,6 +136,7 @@ class Optimal(TPCMethodInterface):
     def __init__(self, path_loss_list, frame_interval, frame_time, packet_loss_RSSI, nr_of_samples):
         super().__init__(nr_of_samples)
         self.internal_optimal = Optimal.calculate_optimal(path_loss_list, frame_interval, frame_time, packet_loss_RSSI)
+        self.internal_optimal = np.roll(self.internal_optimal, -1)
         self.indx = 0
 
     def update_internal(self):
