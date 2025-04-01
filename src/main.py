@@ -1,16 +1,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import math
-
 from tpc_methods import *
 from util_functions import *
+from pathlib import Path
 
 # Load data from .mat
-from pathlib import Path
 path = Path("..") / "data" / "20080919-Male1_3kph.mat"
 path_loss_list = load_mat_file(path)
-# print(np.std(path_loss_list))
-# path_loss_list = simulate_path_loss(1000, 600)
+# path_loss_list = simulate_path_loss(1000, 60)
 
 # Parameters
 frame_time = 5.2701  # ms
@@ -21,7 +19,7 @@ print(f"Total number of frames: {total_nr_frames}")
 tx_power_min = -25  # dBm
 rx_power_max = 0  # dBm
 P_target = -85  # dBm
-packet_loss_RSSI = -90
+packet_loss_RSSI = -88
 offset = 3  # dB
 
 processing_time = 3  # ms
@@ -32,11 +30,12 @@ TPC_methods: dict[str, TPCMethodInterface] = {
     "Xiao_aggressive": Xiao_aggressive(total_nr_frames),
     "Gao": Gao(total_nr_frames),
     "Sodhro": Sodhro(total_nr_frames),
+    "Isak" : Isak(total_nr_frames)
 }
-print(f"Initialized TPC classes")
 
 # Initial transmission power setup
 path_loss_avg = np.average(path_loss_list)
+assert path_loss_avg < 0
 for method in TPC_methods.values():
     method.current_rx_power = -10 + path_loss_avg
     method.current_tx_power = -10
@@ -47,6 +46,9 @@ for frame_nr in range(total_nr_frames):
     for name, method in TPC_methods.items():
         start_of_frame = frame_nr * frame_interval
         frame_path_losses = path_loss_list[start_of_frame:start_of_frame + math.floor(frame_time)]
+        path_loss = np.average(frame_path_losses)
+        opt = packet_loss_RSSI - path_loss + 1
+        assert opt + path_loss >= packet_loss_RSSI
         method.current_rx_power = np.average([method.current_tx_power + path_loss for path_loss in frame_path_losses])
 
         # Check if packet is lost in the current frame
@@ -73,26 +75,33 @@ for frame_nr in range(total_nr_frames):
                 method.current_tx_power = method.next_transmitt_power(-82.5, -85, -80)
             case "Sodhro":
                 method.current_tx_power = method.next_transmitt_power(-85, -88, -82.3) # Values come from precalculation
+            case "Isak":
+                method.current_tx_power = method.next_transmitt_power(-85, -88, -82)
 
         # Update method stats
         method.update_stats(frame_nr)
 
+
+table_header = (
+    f"{'Method':<20} |"
+    + f"{'E_total (J)':>12} |"
+    + f"{'E_avg (mW)':>12} |"
+    + f"{'σ_E':>12} |"
+    + f"{'P_rx_avg (dBm)':>16} |"
+    + f"{'σ_P_rx':>12} |"
+    + f"{'P_tx_avg (dBm)':>16} |"
+    + f"{'σ_P_tx':>12} |"
+    + f"{'η_loss (%)':>12} |"
+    + f"{'T_avg (ms)':>12} |"
+    + f"{'J (ms)':>12}"
+)
+print(table_header)
+
 # Plot and summary statistics
 plt.figure(figsize=(16, 9))
-
 for name, method in TPC_methods.items():
-    avg_tx_power = np.average(method.tx_powers)
-    packet_loss_ratio = 100 * method.lost_frames / total_nr_frames
-    power_consumed = frame_time * sum(map(tx_power_to_mW, method.tx_powers))
-    power_consumed /= 1000
-    
-    if method.latencies:
-        avg_latency = np.average(method.latencies)
-        jitter = np.std(method.latencies)
-    
-    print(f"{name}: Packet loss {packet_loss_ratio:.2f}% with avg_tx_power: {avg_tx_power:.2f} dBm, "
-          f"power consumed: {power_consumed:.2f} J, avg latency: {avg_latency:.2f} ms, jitter: {jitter:.2f} ms")
-
+    stats_string = calculate_stats(method, name, frame_time, total_nr_frames)
+    print(stats_string)
     plt.plot(method.rx_powers, label=name)
 
 print(f"Number of samples {total_nr_frames}")

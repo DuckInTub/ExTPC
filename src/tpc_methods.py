@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 import numpy as np
 import math
+import collections
 
 MIN_TX_POWER = -25
 MAX_TX_POWER = 0
@@ -80,6 +81,31 @@ class TPCMethodInterface(ABC):
         """
         pass
 
+class Isak(TPCMethodInterface):
+
+    NR_SAMPLES = 16 # Number of samples for regression
+
+    def __init__(self, nr_samples):
+        super().__init__(nr_samples)
+        self.latest_pathlosses = collections.deque([], maxlen=Isak.NR_SAMPLES) # FIFO length 8
+
+    def update_internal(self):
+        if len(self.latest_pathlosses) < Isak.NR_SAMPLES:
+            current_path_loss = self.current_rx_power - self.current_tx_power
+            self.latest_pathlosses = collections.deque([current_path_loss]*Isak.NR_SAMPLES, maxlen=Isak.NR_SAMPLES)
+
+        current_path_loss = self.current_rx_power - self.current_tx_power
+        self.latest_pathlosses.append(current_path_loss)
+
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+        path_losses_filtered = [L if L >= -85 else -85 for L in self.latest_pathlosses]
+        coeffs = np.polyfit(range(0, Isak.NR_SAMPLES, 1), path_losses_filtered, 4)
+        current_model = np.poly1d(coeffs)
+        predicted_path_loss = current_model(Isak.NR_SAMPLES+1)
+        next_tx_power = rx_target - predicted_path_loss
+        return np.clip(next_tx_power, MIN_TX_POWER, MAX_TX_POWER)
+
+
 class Stupid(TPCMethodInterface):
     def __init__(self, nr_of_samples):
         super().__init__(nr_of_samples)
@@ -90,6 +116,35 @@ class Stupid(TPCMethodInterface):
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
         current_path_loss = self.current_tx_power - self.current_rx_power
         return np.clip(rx_target + current_path_loss, MIN_TX_POWER, MAX_TX_POWER)
+
+
+class Optimal(TPCMethodInterface):
+    def calculate_optimal(path_loss_list, frame_interval, frame_time, packet_loss_threshhold):
+        NUMBER_FRAMES = len(path_loss_list) // frame_interval
+        tx_powers = np.zeros(NUMBER_FRAMES, dtype=np.int8)
+
+        for frame_nr in range(NUMBER_FRAMES):
+            start_of_frame = frame_nr * frame_interval
+            frame_path_losses = path_loss_list[start_of_frame:start_of_frame + math.floor(frame_time)]
+            path_loss = np.average(frame_path_losses)
+        
+            tx_power = (packet_loss_threshhold ) + abs(path_loss)
+            tx_powers[frame_nr] = tx_power
+
+        return tx_powers
+
+    def __init__(self, path_loss_list, frame_interval, frame_time, packet_loss_RSSI, nr_of_samples):
+        super().__init__(nr_of_samples)
+        self.internal_optimal = Optimal.calculate_optimal(path_loss_list, frame_interval, frame_time, packet_loss_RSSI)
+        self.indx = 0
+
+    def update_internal(self):
+        pass
+
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+        ret = self.internal_optimal[self.indx]
+        self.indx += 1
+        return np.clip(ret, MIN_TX_POWER, MAX_TX_POWER)
 
 class Constant(TPCMethodInterface):
     def __init__(self, constant_power : float, nr_of_samples):
@@ -141,13 +196,44 @@ class Gao(TPCMethodInterface):
             delta = 0
         return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
 
+class Smith_2012(TPCMethodInterface):
+
+    def __init__(self, nr_samples):
+        pass
+        # super().__init__(nr_samples)
+        # Rx_sens = [-95, -93, -90, -86]
+        # k = [1, 2, 3, 4]
+        # levels_k = [-95, -92.5, -90, -46]
+
+
+        # U_rms = math.sqrt( // )
+
+        # if U_rms > -75:
+        #     c = [9, 8.5, 7.5, 7]
+        # elif U_rms <= -75:
+        #     c = [6.5, 6.5, 5.5, 4.5]
+        
+        # for L in range(1, T_pr+1):
+        #     i = [indx for indx in [0, 1, 2] if levels_k[indx] < S_p[L] <= levels_k[indx+1]][0]
+        #     C = Rx_sens[k] + c[k]
+        #     if levels_k[i] <= C:
+        #         Tx_out[L] = 0
+        #     elif C + 0.5 <= levels_k[i] <= C + 30:
+        #         Tx_out[L] = C - levels_k[i]
+        #     else:
+        #         Tx_out[L] = -25
+
 class Sodhro(TPCMethodInterface):
 
     def __init__(self, nr_samples):
         super().__init__(nr_samples)
         self.R_avg = 0
-        self.R_lowest = -80 # Warning STUPID name
+        self.R_lowest = -80 # Warning STUPID name. "More like next to latest"
         self.R_latest = -80
+        self.N = 0 # n in eq 4 & 5 in Sodhro
+        self.R_i_R_avg_sum = 0 # 
+        self.TRL = -88
+        self.TRH_var = 0
 
     def update_internal(self):
         self.R_lowest = self.R_latest 
@@ -155,25 +241,31 @@ class Sodhro(TPCMethodInterface):
         ALPHA_1 = 1.0
         ALPHA_2 = 0.4
 
+        # Update R_avg eq. (1, 2)
         if self.R_latest > self.R_avg:
             self.R_avg = self.R_latest + (1 - ALPHA_1) * self.R_lowest
         elif self.R_latest < self.R_avg:
             self.R_avg = self.R_latest + (1 - ALPHA_2) * self.R_lowest
 
+        # Update TRH_var dynamically eq. (4, 5)
+        self.R_i_R_avg_sum += self.current_rx_power - self.R_avg
+        self.N += 1
+
+        sigma = math.sqrt( (1 / self.N) * self.R_i_R_avg_sum )
+        self.TRH_var = self.TRL + sigma
+
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
         P_DELTAS = list(range(-31, 32))
         R_target = rx_target
-        TRH_var = rx_target_high
-        TRL = rx_target_low
 
-        if self.R_avg > TRH_var or self.R_avg < TRL:
+        if self.R_avg > self.TRH_var or self.R_avg < self.TRL:
             args = [delta for delta in P_DELTAS if delta > R_target - self.R_avg]
             if not args:
                 return self.current_tx_power
 
             indx = np.argmin(abs(R_target - self.R_avg - arg) for arg in args)
             delta_P = args[indx]
-        elif TRL <= self.R_avg <= TRH_var:
+        elif self.TRL <= self.R_avg <= self.TRH_var:
             delta_P = 0
 
         return np.clip(self.current_tx_power + delta_P, MIN_TX_POWER, MAX_TX_POWER)
