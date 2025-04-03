@@ -140,6 +140,34 @@ def load_mat_file(mat_file_path : Path):
         except ValueError:
             print("Invalid input. Please enter an integer.")
 
+def navigate_dict(data_dict):
+    """
+    Walks through a nested dictionary interactively and returns the selected data array.
+    :param data_dict: The dictionary to navigate.
+    :return: The selected data array.
+    """
+    current_level = data_dict
+    path = []
+    
+    while isinstance(current_level, dict):
+        print("\nAvailable keys:")
+        for i, key in enumerate(current_level.keys()):
+            print(f"{i+1}: {key}")
+        
+        try:
+            choice = int(input("Enter the number of the key to navigate: "))
+            selected_key = list(current_level.keys())[choice-1]
+        except (ValueError, IndexError):
+            print("Invalid choice. Please enter a valid number.")
+            continue
+        
+        path.append(selected_key)
+        current_level = current_level[selected_key]
+    
+    print("\nFinal selection:")
+    print(" -> ".join(path))
+    return current_level
+
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt

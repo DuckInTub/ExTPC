@@ -4,10 +4,20 @@ import math
 from tpc_methods import *
 from util_functions import *
 from pathlib import Path
+import pickle
 
-# Load data from .mat
-path = Path("..") / "data" / "20080919-Male1_3kph.mat"
-path_loss_list = load_mat_file(path)
+# Load data from .mat file
+# path = Path("..") / "data" / "Male1_3kph.mat"
+# path_loss_list = load_mat_file(path)
+
+# Load data from pickle
+path = Path("..") / "data" / "data.pkl"
+with open(path, "rb") as file:
+    data_dict = pickle.load(file)
+    path_loss_list = navigate_dict(data_dict)
+    del data_dict
+
+# Simulate data
 # path_loss_list = simulate_path_loss(1000, 60)
 
 # Parameters
@@ -31,7 +41,7 @@ TPC_methods: dict[str, TPCMethodInterface] = {
     "Xiao_aggressive": Xiao_aggressive(total_nr_frames),
     "Gao": Gao(total_nr_frames),
     "Sodhro": Sodhro(total_nr_frames),
-    "Isak" : Isak(total_nr_frames)
+    "Isak" : Isak(total_nr_frames, packet_loss_RSSI)
 }
 
 # Initial transmission power setup
@@ -49,6 +59,7 @@ for frame_nr in range(total_nr_frames):
         path_loss = np.average(frame_path_losses)
         opt = packet_loss_RSSI - path_loss + 0
         assert opt + path_loss >= packet_loss_RSSI
+        assert method.current_tx_power >= -25, method.current_tx_power
         method.current_rx_power = method.current_tx_power + path_loss
 
         # Check if packet is lost in the current frame
@@ -76,7 +87,7 @@ for frame_nr in range(total_nr_frames):
             case "Gao":
                 method.current_tx_power = method.next_transmitt_power(-82.5, -85, -80)
             case "Sodhro":
-                method.current_tx_power = method.next_transmitt_power(-85, -88, -82.3) # Values come from precalculation
+                method.current_tx_power = method.next_transmitt_power(-85, -88, -82.3)
             case "Isak":
                 method.current_tx_power = method.next_transmitt_power(-85, -88, -82)
 

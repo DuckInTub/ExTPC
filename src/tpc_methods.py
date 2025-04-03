@@ -83,23 +83,25 @@ class TPCMethodInterface(ABC):
 
 class Isak(TPCMethodInterface):
 
-    NR_SAMPLES = 16 # Number of samples for regression
+    NR_SAMPLES = 4 # Number of samples for regression
 
-    def __init__(self, nr_samples):
+    def __init__(self, nr_samples, packet_loss_threshhold):
         super().__init__(nr_samples)
+        self.packet_loss_limit = packet_loss_threshhold
         self.latest_pathlosses = collections.deque([], maxlen=Isak.NR_SAMPLES) # FIFO length 8
+        self.limit_high = 0
 
     def update_internal(self):
-        if len(self.latest_pathlosses) < Isak.NR_SAMPLES:
-            current_path_loss = self.current_rx_power - self.current_tx_power
-            self.latest_pathlosses = collections.deque([current_path_loss]*Isak.NR_SAMPLES, maxlen=Isak.NR_SAMPLES)
-
         current_path_loss = self.current_rx_power - self.current_tx_power
         self.latest_pathlosses.append(current_path_loss)
+        self.limit_high = max(self.latest_pathlosses) + (1 - 0.8) * self.limit_high
 
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+        if len(self.latest_pathlosses) < Isak.NR_SAMPLES:
+            return -10
+
         path_losses_filtered = [L if L >= -85 else -85 for L in self.latest_pathlosses]
-        coeffs = np.polyfit(range(0, Isak.NR_SAMPLES, 1), path_losses_filtered, 4)
+        coeffs = np.polyfit(range(0, Isak.NR_SAMPLES, 1), path_losses_filtered, 3)
         current_model = np.poly1d(coeffs)
         predicted_path_loss = current_model(Isak.NR_SAMPLES+1)
         next_tx_power = rx_target - predicted_path_loss
@@ -127,8 +129,11 @@ class Optimal(TPCMethodInterface):
             start_of_frame = frame_nr * frame_interval
             frame_path_losses = path_loss_list[start_of_frame:start_of_frame + math.floor(frame_time)]
             path_loss = np.average(frame_path_losses)
-        
-            tx_power = (packet_loss_threshhold ) + abs(path_loss)
+
+            if path_loss <= packet_loss_threshhold:
+                tx_power = -25
+            else:
+                tx_power = (packet_loss_threshhold ) + abs(path_loss)
             tx_powers[frame_nr] = tx_power
 
         return tx_powers

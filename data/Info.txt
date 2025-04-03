@@ -1,0 +1,16 @@
+100kHz bandwidth equivalent measurements were performed using the VSA based on subject movement on a treadmill in an indoor office environment at four different set speeds 3, 6, 9, and 12 km/h, hence giving walking, jogging, and running with each measurement set being measured at 820MHz carrier frequency, with channel gain sampled every 1ms (1 kHz), over a period of 60s. As part of the channel, the treadmill had holding arms, which were partially metallic and partially plastic.
+
+Following channel links are measured (Rx -- Tx):
+C --> Rh
+Rw --> Rh
+Lw --> Rh
+Ra --> Rh
+La --> Rh
+B -->Rh
+Rw --> C
+Ra --> C
+B -->C
+
+(C-Chest, B-Back, L - Left, Right, a-ankle, h-hip, w-wrist).
+
+In every mat file, it has a struct which stores all channel gain profiles. Channels are named as "pl_Tx location_Rx location".
