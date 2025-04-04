@@ -47,6 +47,12 @@ class TPCMethodInterface(ABC):
         self.rx_powers[index] = self.current_rx_power
         self.tx_powers[index] = self.current_tx_power
 
+    def update_transmission_power(self, rx_target, rx_target_low, rx_target_high):
+        next_P_tx = self.next_transmitt_power(rx_target, rx_target_low, rx_target_high)
+        clipped = np.clip(next_P_tx, MIN_TX_POWER, MAX_TX_POWER)
+        self.current_tx_power = clipped
+        return clipped
+
     @abstractmethod
     def next_transmitt_power(
         self, 
@@ -55,7 +61,7 @@ class TPCMethodInterface(ABC):
         rx_target_high: float
     ) -> float:
         """
-        Calculate and update the next transmitted power based on the internal history
+        Calculate the next transmitted power based on the internal history
         of the method and given bounds for rx_power target.
 
         Parameters:
@@ -121,15 +127,11 @@ class Stupid(TPCMethodInterface):
 
 
 class Optimal(TPCMethodInterface):
-    def calculate_optimal(path_loss_list, frame_interval, frame_time, packet_loss_threshhold):
-        NUMBER_FRAMES = len(path_loss_list) // frame_interval
+    def calculate_optimal(frame_path_loss_list, frame_interval, frame_time, packet_loss_threshhold):
+        NUMBER_FRAMES = len(frame_path_loss_list)
         tx_powers = np.zeros(NUMBER_FRAMES, dtype=np.int8)
 
-        for frame_nr in range(NUMBER_FRAMES):
-            start_of_frame = frame_nr * frame_interval
-            frame_path_losses = path_loss_list[start_of_frame:start_of_frame + math.floor(frame_time)]
-            path_loss = np.average(frame_path_losses)
-
+        for frame_nr, path_loss in enumerate(frame_path_loss_list):
             if path_loss <= packet_loss_threshhold:
                 tx_power = -25
             else:

@@ -10,22 +10,22 @@ def calculate_received_power(tx_power_dbm: float, path_loss_dbm : float):
     return tx_power_dbm - path_loss_dbm
 
 def tx_power_to_mW(tx_power):
-    output_power_dbm = np.array([0, -1, -3, -5, -7, -10, -15, -25])
-    power_consumption_mw = np.array([31.3, 29.7, 27.4, 25.0, 22.5, 20.2, 17.9, 15.3])
+    # output_power_dbm = np.array([0, -1, -3, -5, -7, -10, -15, -25])
+    # power_consumption_mw = np.array([31.3, 29.7, 27.4, 25.0, 22.5, 20.2, 17.9, 15.3])
+    # coeffs = np.polyfit(output_power_dbm, power_consumption_mw, 4)
 
-    coeffs = np.polyfit(output_power_dbm, power_consumption_mw, 2)
+    # Regression polynomial precalculated for performance
+    coeffs = [-1.22447672e-04, -4.85637139e-03, -1.92455105e-02,  1.27663509e+00, 3.11945831e+01]
     poly_model = np.poly1d(coeffs)
     return poly_model(tx_power)
 
-
 def calculate_stats(method : TPCMethodInterface, name : str, frame_time, total_nr_frames):
-    map_thing = list(map(tx_power_to_mW, method.tx_powers))
-    total_consumed_power = frame_time * sum(map_thing)
+    total_consumed_power = frame_time * np.sum(tx_power_to_mW(method.tx_powers))
     total_consumed_power /= 1000
     avg_tx_power = np.average(method.tx_powers)
     std_tx_power = np.std(method.tx_powers)
     avg_consumed_power = tx_power_to_mW(avg_tx_power)
-    std_power_consumption = np.std(map_thing)
+    std_power_consumption = np.std(tx_power_to_mW(method.tx_powers))
     avg_rx_power = np.average(method.rx_powers)
     std_rx_power = np.std(method.rx_powers)
     packet_loss_ratio = 100 * method.lost_frames / total_nr_frames
@@ -36,17 +36,17 @@ def calculate_stats(method : TPCMethodInterface, name : str, frame_time, total_n
         jitter = np.std(method.latencies)
     
     return (
-        f"{name:<20} |"
+        f"{name:<16} |"
         + f"{total_consumed_power:>12.3f} |"
         + f"{avg_consumed_power:>12.3f} |"
-        + f"{std_power_consumption:>12.3f} |"
+        + f"{std_power_consumption:>7.3f} |"
         + f"{avg_rx_power:>16.2f} |"
-        + f"{std_rx_power:>12.2f} |"
+        + f"{std_rx_power:>7.2f} |"
         + f"{avg_tx_power:>16.2f} |"
-        + f"{std_tx_power:>12.2f} |"
+        + f"{std_tx_power:>7.2f} |"
         + f"{packet_loss_ratio:>12.2f} |"
         + f"{avg_latency:>12.2f} |"
-        + f"{jitter:>12.2f}"
+        + f"{jitter:>7.2f}"
     )
 
 def simulate_path_loss(sample_rate : int, time : float) -> np.ndarray:
@@ -97,11 +97,25 @@ def simulate_path_loss(sample_rate : int, time : float) -> np.ndarray:
     # Convert the Gamma-distributed amplitude to dB (20*log10 for amplitude)
     fading_dB = 20 * np.log10(gamma_samples)
     
-    # Add a baseline path loss offset (choose based on your reference; here we use -60 dB)
+    # Add a baseline path loss offset
     baseline_loss = -60
     path_loss = baseline_loss + fading_dB
     
     return path_loss
+
+def extract_frames(path_loss_list, frame_interval_ms, frame_time_ms):
+    nr_samples = len(path_loss_list)
+    total_nr_frames = nr_samples // frame_interval_ms
+
+    ret = np.zeros(total_nr_frames)
+
+    for frame_nr in range(total_nr_frames):
+        start_of_frame = frame_nr * frame_interval_ms
+        frame_path_losses = path_loss_list[start_of_frame:start_of_frame + math.floor(frame_time_ms)]
+        path_loss = np.average(frame_path_losses)
+        ret[frame_nr] = path_loss
+    
+    return ret
 
 def load_mat_file(mat_file_path : Path):
     import scipy.io
@@ -176,19 +190,21 @@ if __name__ == "__main__":
     sample_rate = 1000  # e.g., 1000 samples per second
     duration = 60       # simulate for 10 seconds
     pl = simulate_path_loss(sample_rate, duration)
+    print(len(pl))
 
     from util_functions import *
     from pathlib import Path
-    path_loss_list = load_mat_file(Path("..") / "data/20080919-Male1_3kph.mat")
+    path_loss_list = load_mat_file(Path("..") / "data/Male1_3kph.mat")
+    frames_pl = extract_frames(path_loss_list, 200, 5.27)
 
     plt.figure(figsize=(10, 4))  # Ensure consistent figure size
-    plt.plot(path_loss_list, color='b', linewidth=1, label="Real")
-    # plt.plot(pl, color='#AAAA00', linewidth=1, label="Simulated")
-    plt.xlim(0, 10_000),
+    plt.plot(frames_pl, color='r', linewidth=1, label="Real")
+    plt.plot(pl, color='b', linewidth=1, label="Simulated")
+    plt.xlim(0, len(pl)),
     plt.ylim(-100, -50)
-    plt.xlabel("Time (ms)", fontsize=14)
+    plt.xlabel("Frame nr", fontsize=14)
     plt.ylabel("Gain (dBm)", fontsize=14) 
     plt.grid(True)
     plt.title("Real", fontsize=16, fontweight="bold")
     plt.legend()
-    plt.savefig("professional_figure.png", dpi=300, bbox_inches='tight')
+    plt.show()
