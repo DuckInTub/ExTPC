@@ -44,6 +44,7 @@ TPC_methods: dict[str, TPCMethodInterface] = {
     "Optimal": Optimal(frame_path_losses, frame_interval, frame_time, packet_loss_RSSI, total_nr_frames),
     "Constant": Constant(-10, total_nr_frames),
     "Xiao_aggressive": Xiao_aggressive(total_nr_frames),
+    "Xiao_conservative": Xiao_conservative(total_nr_frames),
     "Gao": Gao(total_nr_frames),
     "Sodhro": Sodhro(total_nr_frames),
     "Isak" : Isak(total_nr_frames, packet_loss_RSSI)
@@ -81,6 +82,8 @@ for frame_nr, frame_path_loss in enumerate(frame_path_losses):
             case "Constant":
                 method.update_transmission_power(P_target, -85, -80)
             case "Xiao_aggressive":
+                method.update_transmission_power(-82.5, -85, -80)
+            case "Xiao_conservative":
                 method.update_transmission_power(-82.5, -85, -80)
             case "Gao":
                 method.update_transmission_power(-82.5, -85, -80)

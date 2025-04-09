@@ -183,6 +183,31 @@ class Xiao_aggressive(TPCMethodInterface):
             delta = 0
         return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
 
+class Xiao_conservative(TPCMethodInterface):
+    def __init__(self, nr_of_samples, history_N: int = 10, decrease_delta: int = -2):
+        super().__init__(nr_of_samples)
+        self.history_N = history_N
+        self.decrease_delta = decrease_delta
+        self.Th_counter: int = 0
+
+    def update_internal(self):
+        pass
+
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
+        if self.current_rx_power > rx_target_high:
+            self.Th_counter += 1
+        else:
+            self.Th_counter = 0
+
+        if self.current_rx_power < rx_target_low:
+            self.Th_counter = 0
+            return MAX_TX_POWER
+        delta = 0
+        if self.Th_counter >= self.history_N:
+            delta = self.decrease_delta
+            self.Th_counter = 0
+        return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
+
 class Gao(TPCMethodInterface):
     def __init__(self, nr_of_samples, filter_coeff=0.8):
         super().__init__(nr_of_samples)
