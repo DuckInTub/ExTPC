@@ -2,6 +2,8 @@ from abc import ABC, abstractmethod
 import numpy as np
 import math
 import collections
+from numpy.lib.stride_tricks import sliding_window_view
+from collections import Counter
 
 MIN_TX_POWER = -25
 MAX_TX_POWER = 0
@@ -87,6 +89,101 @@ class TPCMethodInterface(ABC):
         """
         pass
 
+class Guo(TPCMethodInterface):
+
+    def __init__(self, nr_samples, frame_path_losses):
+        super().__init__(nr_samples)
+        self.alpha = 0.2
+        self.beta = 0.3
+        self.num_states = 7
+        self.prediction_matrix = np.zeros((self.num_states, self.num_states))
+
+        self.current_tx_power = 0
+        self.previous_predicted_state = 2
+
+        self.set_prediction_matrix(frame_path_losses)
+
+    def set_prediction_matrix(self, frame_path_losses : np.array):
+        states = [self.gain_to_state(gain) for gain in frame_path_losses]
+        counts = Counter(states)
+        pairs = sliding_window_view(states, 2)
+        tuple_pairs = [tuple(pair) for pair in pairs]
+        transitions = Counter(tuple_pairs)
+
+        for i in range(self.num_states):
+            for j in range(self.num_states):
+                current_state_val = i+1
+                next_state_val = j+1
+
+                M = counts.get(current_state_val, 0)
+                tup = (current_state_val, next_state_val)
+                L = transitions.get(tup, 0)
+
+                if M == 0:
+                    ratio = 1 / self.num_states # If state not seen assume uniform transition probs.
+                else:
+                    ratio = L / M 
+                self.prediction_matrix[i, j] = ratio
+
+
+        row_sums = self.prediction_matrix.sum(axis=1, keepdims=True)
+        self.prediction_matrix = self.prediction_matrix / row_sums
+
+    def gain_to_state(self, gain):
+        if gain <= -88:
+            return 1
+        elif -88 < gain <= -83:
+            return 2
+        elif -83 < gain <= -78:
+            return 3
+        elif -78 < gain <= -76:
+            return 4
+        elif -76 < gain <= -73:
+            return 5
+        elif -73 < gain <= -68:
+            return 6
+        else:
+            assert gain > -68
+            return 7
+
+    @staticmethod
+    def state_to_tx(state):
+        return [0, 0, -5, -10, -12, -15, -20][state-1]
+
+    def markov_predict(self, state):
+        row = self.prediction_matrix[state-1, :]
+        indexes = np.arange(1, self.num_states+1)
+        return np.dot(row, indexes)
+
+    def update_internal(self):
+        return super().update_internal()
+
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+        # C : current_state
+        # C_bar : previous_predicted_state
+        # C_hat : current_markov_prediction
+
+        current_gain = self.current_rx_power - self.current_tx_power
+
+        current_state = self.gain_to_state(current_gain)
+
+        current_markov_prediction = self.markov_predict(current_state)
+
+        if current_markov_prediction < 1:
+            predicted_next_state = (self.previous_predicted_state + current_state) / 2
+        else:
+            predicted_next_state = (
+                self.alpha * self.previous_predicted_state 
+                + self.beta * current_state 
+                + (1 - self.alpha - self.beta) * current_markov_prediction
+            )
+
+        predicted_next_state = math.floor(predicted_next_state)
+        self.previous_predicted_state = predicted_next_state
+
+        next_tx_power = self.state_to_tx(predicted_next_state)
+        return next_tx_power
+
 class Isak(TPCMethodInterface):
 
     NR_SAMPLES = 4 # Number of samples for regression
@@ -95,12 +192,17 @@ class Isak(TPCMethodInterface):
         super().__init__(nr_samples)
         self.packet_loss_limit = packet_loss_threshhold
         self.latest_pathlosses = collections.deque([], maxlen=Isak.NR_SAMPLES) # FIFO length 8
-        self.limit_high = 0
+        self.sum_high = 0
+        self.sum_low = -90
+        self.iter = 0
 
     def update_internal(self):
         current_path_loss = self.current_rx_power - self.current_tx_power
+        self.iter += 1
         self.latest_pathlosses.append(current_path_loss)
-        self.limit_high = max(self.latest_pathlosses) + (1 - 0.8) * self.limit_high
+        self.sum_high += max(self.latest_pathlosses)
+        self.sum_low  += min(self.latest_pathlosses)
+        # print(self.sum_high / self.iter, self.sum_low / self.iter)
 
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
         if len(self.latest_pathlosses) < Isak.NR_SAMPLES:
@@ -127,7 +229,7 @@ class Stupid(TPCMethodInterface):
 
 
 class Optimal(TPCMethodInterface):
-    def calculate_optimal(frame_path_loss_list, frame_interval, frame_time, packet_loss_threshhold):
+    def calculate_optimal(frame_path_loss_list, packet_loss_threshhold):
         NUMBER_FRAMES = len(frame_path_loss_list)
         tx_powers = np.zeros(NUMBER_FRAMES, dtype=np.int8)
 
@@ -140,9 +242,9 @@ class Optimal(TPCMethodInterface):
 
         return tx_powers
 
-    def __init__(self, path_loss_list, frame_interval, frame_time, packet_loss_RSSI, nr_of_samples):
+    def __init__(self, frame_path_loss_list, packet_loss_RSSI, nr_of_samples):
         super().__init__(nr_of_samples)
-        self.internal_optimal = Optimal.calculate_optimal(path_loss_list, frame_interval, frame_time, packet_loss_RSSI)
+        self.internal_optimal = Optimal.calculate_optimal(frame_path_loss_list, packet_loss_RSSI)
         self.internal_optimal = np.roll(self.internal_optimal, -1)
         self.indx = 0
 
@@ -188,20 +290,21 @@ class Gao(TPCMethodInterface):
         super().__init__(nr_of_samples)
         self.filter_coeff: float = filter_coeff
         self.average_RSSI: float = 0.0
-        self.tx_power_control_steps = [-3, -2, -1, 0, 1, 2, 3, 4]
+        self.DELTA_P_i = np.array([-3, -2, -1, 0, 1, 2, 3, 4])
 
     def update_internal(self):
-        self.average_RSSI = self.current_rx_power + (1 - self.filter_coeff)*self.average_RSSI
+        self.average_RSSI = self.filter_coeff*self.current_rx_power + (1 - self.filter_coeff)*self.average_RSSI
 
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
+        delta = 0
         if self.average_RSSI > rx_target_high or self.average_RSSI < rx_target_low:
-            args = [step for step in self.tx_power_control_steps if step > rx_target - self.average_RSSI]
-            if not args:
-                return self.current_tx_power
-            index_of_min = np.argmin([abs(rx_target - self.average_RSSI - step) for step in args])
-            delta = self.tx_power_control_steps[index_of_min]
-        elif rx_target_low <= self.average_RSSI < rx_target_high:
-            delta = 0
+            ideal = rx_target - self.average_RSSI
+
+            diffs = np.abs(ideal - self.DELTA_P_i)
+
+            index_of_min = np.argmin(diffs)
+            delta = self.DELTA_P_i[index_of_min]
+
         return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
 
 class Smith_2012(TPCMethodInterface):
