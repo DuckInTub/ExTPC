@@ -8,8 +8,8 @@ import pickle
 import time
 
 # Load data from .mat file
-# path = Path("..") / "data" / "Male1_3kph.mat"
-# path_loss_list = load_mat_file(path)
+path = Path("..") / "data" / "Male1_3kph.mat"
+path_loss_list = load_mat_file(path)
 
 # Load data from pickle
 # path = Path("..") / "data" / "data.pkl"
@@ -20,7 +20,7 @@ import time
 
 # Simulate data
 start_time = time.perf_counter()
-path_loss_list = simulate_path_loss(1000, 60_000)
+# path_loss_list = simulate_path_loss(1000, 600)
 
 # Parameters
 frame_time = 5.2701  # ms
@@ -30,7 +30,7 @@ total_nr_frames = len(path_loss_list) // frame_interval
 tx_power_min = -25  # dBm
 rx_power_max = 0  # dBm
 P_target = -85  # dBm
-packet_loss_RSSI = -88
+packet_loss_RSSI = -88 # Cite the standard
 
 processing_time = 3  # ms
 ack_frame_time = 0.2  # ms
@@ -41,7 +41,7 @@ print(f"Signal loaded. {time.perf_counter() - start_time:2f}s")
 print(f"Total number of frames: {total_nr_frames}")
 
 TPC_methods: dict[str, TPCMethodInterface] = {
-    "Optimal": Optimal(frame_path_losses, frame_interval, frame_time, packet_loss_RSSI, total_nr_frames),
+    "Optimal": Optimal(frame_path_losses, packet_loss_RSSI, total_nr_frames),
     "Constant": Constant(-10, total_nr_frames),
     "Xiao_aggr_2008": Xiao_aggressive_2008(total_nr_frames),
     "Xiao_cons_2008": Xiao_conservative_2008(total_nr_frames),
@@ -50,7 +50,7 @@ TPC_methods: dict[str, TPCMethodInterface] = {
     "Xiao_cons_2009": Xiao_conservative_2009(total_nr_frames),
     "Gao": Gao(total_nr_frames),
     "Sodhro": Sodhro(total_nr_frames),
-    "Isak" : Isak(total_nr_frames, packet_loss_RSSI)
+    "Guo": Guo(total_nr_frames, frame_path_losses)
 }
 
 # Initial transmission power setup
@@ -71,6 +71,7 @@ for frame_nr, frame_path_loss in enumerate(frame_path_losses):
         if packet_lost:
             method.consecutive_lost_frames += 1
             method.lost_frames += 1
+            method.current_rx_power = -100 # Packet loss set RSSI -100 dBm
         else:
             extra_delay = method.consecutive_lost_frames * 200  # ms
             latency = frame_time + processing_time + ack_frame_time + extra_delay
@@ -99,6 +100,8 @@ for frame_nr, frame_path_loss in enumerate(frame_path_losses):
             case "Sodhro":
                 method.update_transmission_power(-85, -88, -82.3)
             case "Isak":
+                method.update_transmission_power(-85, -88, -82)
+            case "Guo":
                 method.update_transmission_power(-85, -88, -82)
 
         # Update method stats

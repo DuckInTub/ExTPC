@@ -12,10 +12,10 @@ def calculate_received_power(tx_power_dbm: float, path_loss_dbm : float):
 def tx_power_to_mW(tx_power):
     # output_power_dbm = np.array([0, -1, -3, -5, -7, -10, -15, -25])
     # power_consumption_mw = np.array([31.3, 29.7, 27.4, 25.0, 22.5, 20.2, 17.9, 15.3])
-    # coeffs = np.polyfit(output_power_dbm, power_consumption_mw, 4)
+    # coeffs = np.polyfit(output_power_dbm, power_consumption_mw, 3)
 
     # Regression polynomial precalculated for performance
-    coeffs = [-1.22447672e-04, -4.85637139e-03, -1.92455105e-02,  1.27663509e+00, 3.11945831e+01]
+    coeffs = [7.29169704e-04, 5.58419098e-02, 1.58221460e+00, 3.13663364e+01]
     poly_model = np.poly1d(coeffs)
     return poly_model(tx_power)
 
@@ -57,10 +57,10 @@ def simulate_path_loss(sample_rate : int, time : float) -> np.ndarray:
     path loss in dB. The simulation is based on:
     
     1. Sampling white Gaussian noise from the standard normal distribution.
-    2. Passing the noise through a Butterworth low-pass filter with a cutoff of 4Hz according to \cite{smith_first-_2011}.
+    2. Passing the noise through a Butterworth low-pass filter with a cutoff of 4Hz according to cite{smith_first-_2011}.
     3. Normalizing the filtered signal to zero mean and unit variance.
     4. Converting the Gaussian process to a uniform process using the standard normal cumulative distribution function. 
-    5. Mapping the uniform process onto the desired distribution from \cite{smith_first-_2011} using the distribution's percent point function. 
+    5. Mapping the uniform process onto the desired distribution from cite{smith_first-_2011} using the distribution's percent point function. 
     6. Convert the gamma distributed samples to dB and center it around a desired mean path loss.
     
     Parameters:
@@ -89,9 +89,9 @@ def simulate_path_loss(sample_rate : int, time : float) -> np.ndarray:
     uniform_vals = norm.cdf(smooth_gauss)
     
     # Map the uniform values to Gamma-distributed samples
-    # Parameters based on the paper: shape a=3.52, scale b=0.251
-    shape = 3.52
-    scale = 0.251
+    # shape = 2.97; scale = 0.291 # Moving 820 MHz
+    shape = 3.52; scale = 0.251 # Walking 820 MHz
+    # shape = 2.59; scale = 0.327 # Running 820 MHz
     gamma_samples = gamma.ppf(uniform_vals, a=shape, scale=scale)
     
     # Convert the Gamma-distributed amplitude to dB (20*log10 for amplitude)
