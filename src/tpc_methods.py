@@ -165,7 +165,7 @@ class Constant(TPCMethodInterface):
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
         return self.tx_power_constant # dBm
 
-class Xiao_aggressive(TPCMethodInterface):
+class Xiao_aggressive_2008(TPCMethodInterface):
     def __init__(self, nr_of_samples, avg_weight=0.8):
         super().__init__(nr_of_samples)
         self.avg_weight = avg_weight # α in Xiaos paper
@@ -183,7 +183,7 @@ class Xiao_aggressive(TPCMethodInterface):
             delta = 0
         return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
 
-class Xiao_conservative(TPCMethodInterface):
+class Xiao_conservative_2008(TPCMethodInterface):
     def __init__(self, nr_of_samples, history_N: int = 10, decrease_delta: int = -2):
         super().__init__(nr_of_samples)
         self.history_N = history_N
@@ -198,7 +198,6 @@ class Xiao_conservative(TPCMethodInterface):
             self.Th_counter += 1
         else:
             self.Th_counter = 0
-
         if self.current_rx_power < rx_target_low:
             self.Th_counter = 0
             return MAX_TX_POWER
@@ -206,6 +205,72 @@ class Xiao_conservative(TPCMethodInterface):
         if self.Th_counter >= self.history_N:
             delta = self.decrease_delta
             self.Th_counter = 0
+        return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
+    
+class Xiao_aggressive_2009(TPCMethodInterface):
+    def __init__(self, nr_of_samples, avg_weight_d=0.2, avg_weight_u=0.8):
+        super().__init__(nr_of_samples)
+        self.avg_weight_d = avg_weight_d # α_d in Xiaos paper
+        self.avg_weight_u = avg_weight_u # α_u in Xiaos paper
+        self.exp_avg_rx_power: float = 0.0 # R̅ in Xiaos paper
+
+    def update_internal(self):
+        if self.current_rx_power <= self.exp_avg_rx_power:
+            self.exp_avg_rx_power = self.avg_weight_d*self.current_rx_power+(1-self.avg_weight_d)*self.exp_avg_rx_power
+        else:
+            self.exp_avg_rx_power = self.avg_weight_u*self.current_rx_power+(1-self.avg_weight_u)*self.exp_avg_rx_power
+
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
+        if self.exp_avg_rx_power > rx_target_high:
+            delta = -2
+        if self.exp_avg_rx_power < rx_target_low:
+            delta = 3
+        if rx_target_low <= self.exp_avg_rx_power <= rx_target_high:
+            delta = 0
+        return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
+    
+class Xiao_balanced_2009(TPCMethodInterface):
+    def __init__(self, nr_of_samples, avg_weight_d=0.8, avg_weight_u=0.8):
+        super().__init__(nr_of_samples)
+        self.avg_weight_d = avg_weight_d # α_d in Xiaos paper
+        self.avg_weight_u = avg_weight_u # α_u in Xiaos paper
+        self.exp_avg_rx_power: float = 0.0 # R̅ in Xiaos paper
+
+    def update_internal(self):
+        if self.current_rx_power <= self.exp_avg_rx_power:
+            self.exp_avg_rx_power = self.avg_weight_d*self.current_rx_power+(1-self.avg_weight_d)*self.exp_avg_rx_power
+        else:
+            self.exp_avg_rx_power = self.avg_weight_u*self.current_rx_power+(1-self.avg_weight_u)*self.exp_avg_rx_power
+
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
+        if self.exp_avg_rx_power > rx_target_high:
+            delta = -1
+        if self.exp_avg_rx_power < rx_target_low:
+            delta = 3
+        if rx_target_low <= self.exp_avg_rx_power <= rx_target_high:
+            delta = 0
+        return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
+
+class Xiao_conservative_2009(TPCMethodInterface):
+    def __init__(self, nr_of_samples, avg_weight_d=0.8, avg_weight_u=0.2):
+        super().__init__(nr_of_samples)
+        self.avg_weight_d = avg_weight_d # α_d in Xiaos paper
+        self.avg_weight_u = avg_weight_u # α_u in Xiaos paper
+        self.exp_avg_rx_power: float = 0.0 # R̅ in Xiaos paper
+
+    def update_internal(self):
+        if self.current_rx_power <= self.exp_avg_rx_power:
+            self.exp_avg_rx_power = self.avg_weight_d*self.current_rx_power+(1-self.avg_weight_d)*self.exp_avg_rx_power
+        else:
+            self.exp_avg_rx_power = self.avg_weight_u*self.current_rx_power+(1-self.avg_weight_u)*self.exp_avg_rx_power
+
+    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
+        if self.exp_avg_rx_power > rx_target_high:
+            delta = -1
+        if self.exp_avg_rx_power < rx_target_low:
+            delta = 3
+        if rx_target_low <= self.exp_avg_rx_power <= rx_target_high:
+            delta = 0
         return np.clip(self.current_tx_power + delta, MIN_TX_POWER, MAX_TX_POWER)
 
 class Gao(TPCMethodInterface):
