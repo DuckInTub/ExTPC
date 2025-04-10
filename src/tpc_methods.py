@@ -96,67 +96,59 @@ class Guo(TPCMethodInterface):
         self.alpha = 0.2
         self.beta = 0.3
         self.num_states = 7
-        self.prediction_matrix = np.zeros((self.num_states, self.num_states))
 
         self.current_tx_power = 0
         self.previous_predicted_state = 2
+        self.previous_state = 2
 
-        self.set_prediction_matrix(frame_path_losses)
-
-    def set_prediction_matrix(self, frame_path_losses : np.array):
-        states = [self.gain_to_state(gain) for gain in frame_path_losses]
-        counts = Counter(states)
-        pairs = sliding_window_view(states, 2)
-        tuple_pairs = [tuple(pair) for pair in pairs]
-        transitions = Counter(tuple_pairs)
-
-        for i in range(self.num_states):
-            for j in range(self.num_states):
-                current_state_val = i+1
-                next_state_val = j+1
-
-                M = counts.get(current_state_val, 0)
-                tup = (current_state_val, next_state_val)
-                L = transitions.get(tup, 0)
-
-                if M == 0:
-                    ratio = 1 / self.num_states # If state not seen assume uniform transition probs.
-                else:
-                    ratio = L / M 
-                self.prediction_matrix[i, j] = ratio
-
-
-        row_sums = self.prediction_matrix.sum(axis=1, keepdims=True)
-        self.prediction_matrix = self.prediction_matrix / row_sums
-
-    def gain_to_state(self, gain):
-        if gain <= -88:
-            return 1
-        elif -88 < gain <= -83:
-            return 2
-        elif -83 < gain <= -78:
-            return 3
-        elif -78 < gain <= -76:
-            return 4
-        elif -76 < gain <= -73:
-            return 5
-        elif -73 < gain <= -68:
-            return 6
-        else:
-            assert gain > -68
-            return 7
+        # Counts states transitions from row i+1 to col j+1
+        self.transition_counts = np.zeros((self.num_states, self.num_states))
+        # Counts occurence of state i+1
+        self.state_counts = np.zeros(self.num_states)
+        self.prediction_matrix = np.zeros((self.num_states, self.num_states))
+        self.prediction_matrix.fill(1 / self.num_states)
 
     @staticmethod
-    def state_to_tx(state):
+    def gain_to_state(gain: float) -> int:
+        """ Maps channel gain (dBm) to a state (1-7) -> C(s) """
+        if gain <= -88: return 1
+        elif -88 < gain <= -83: return 2
+        elif -83 < gain <= -78: return 3
+        elif -78 < gain <= -76: return 4
+        elif -76 < gain <= -73: return 5
+        elif -73 < gain <= -68: return 6
+        else: return 7
+
+    @staticmethod
+    def state_to_tx(state: int) -> int:
+        """ Maps a state (1-7) to Tx power (dBm) -> constraint(Floor(Ĉ(s+1))) """
         return [0, 0, -5, -10, -12, -15, -20][state-1]
 
     def markov_predict(self, state):
-        row = self.prediction_matrix[state-1, :]
-        indexes = np.arange(1, self.num_states+1)
-        return np.dot(row, indexes)
+        transitions_probabilities = self.prediction_matrix[state-1, :]
+        possible_states = np.arange(1, self.num_states+1)
+        markov_predicted_state = np.dot(transitions_probabilities, possible_states)
+        return markov_predicted_state
+
+    def update_prediction_matrix(self):
+        current_gain = self.current_rx_power - self.current_tx_power
+        current_state = self.gain_to_state(current_gain)
+
+        prev_idx = self.previous_state - 1
+        curr_idx = current_state - 1
+
+        self.state_counts[curr_idx] += 1
+        self.transition_counts[prev_idx, curr_idx] += 1
+
+        M = self.state_counts[curr_idx]
+
+        L_row = self.transition_counts[curr_idx, :]
+        self.prediction_matrix[curr_idx, :] = L_row / M
+
+        self.previous_state = current_state
 
     def update_internal(self):
-        return super().update_internal()
+        self.update_prediction_matrix()
 
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
         # C : current_state
