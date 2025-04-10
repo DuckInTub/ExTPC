@@ -43,8 +43,11 @@ print(f"Total number of frames: {total_nr_frames}")
 TPC_methods: dict[str, TPCMethodInterface] = {
     "Optimal": Optimal(frame_path_losses, packet_loss_RSSI, total_nr_frames),
     "Constant": Constant(-10, total_nr_frames),
-    "Xiao_aggressive": Xiao_aggressive(total_nr_frames),
-    "Xiao_consv.": Xiao_conservative(total_nr_frames),
+    "Xiao_aggr_2008": Xiao_aggressive_2008(total_nr_frames),
+    "Xiao_cons_2008": Xiao_conservative_2008(total_nr_frames),
+    "Xiao_aggr_2009": Xiao_aggressive_2009(total_nr_frames),
+    "Xiao_bal_2009": Xiao_balanced_2009(total_nr_frames),
+    "Xiao_cons_2009": Xiao_conservative_2009(total_nr_frames),
     "Gao": Gao(total_nr_frames),
     "Sodhro": Sodhro(total_nr_frames),
     "Guo": Guo(total_nr_frames, frame_path_losses)
@@ -82,9 +85,15 @@ for frame_nr, frame_path_loss in enumerate(frame_path_losses):
                 method.update_transmission_power(P_target, -85, -80)
             case "Constant":
                 method.update_transmission_power(P_target, -85, -80)
-            case "Xiao_aggressive":
+            case "Xiao_aggr_2008":
                 method.update_transmission_power(-82.5, -85, -80)
-            case "Xiao_consv.":
+            case "Xiao_cons_2008":
+                method.update_transmission_power(-82.5, -85, -80)
+            case "Xiao_aggr_2009":
+                method.update_transmission_power(-82.5, -85, -80)
+            case "Xiao_bal_2009":
+                method.update_transmission_power(-82.5, -85, -80)
+            case "Xiao_cons_2009":
                 method.update_transmission_power(-82.5, -85, -80)
             case "Gao":
                 method.update_transmission_power(-82.5, -85, -80)
