@@ -45,9 +45,9 @@ TPC_methods: dict[str, TPCMethodInterface] = {
     "Constant": Constant(-10, total_nr_frames),
     "Xiao_aggr_2008": Xiao_aggressive_2008(total_nr_frames),
     "Xiao_cons_2008": Xiao_conservative_2008(total_nr_frames),
-    "Xiao_aggr_2009": Xiao_aggressive_2009(total_nr_frames),
-    "Xiao_bal_2009": Xiao_balanced_2009(total_nr_frames),
-    "Xiao_cons_2009": Xiao_conservative_2009(total_nr_frames),
+    "Xiao_aggr_2009": Xiao_2009(total_nr_frames, 0.2, 0.8),
+    "Xiao_bal_2009": Xiao_2009(total_nr_frames, 0.8, 0.8),
+    "Xiao_cons_2009": Xiao_2009(total_nr_frames, 0.8, 0.2),
     "Gao": Gao(total_nr_frames),
     "Sodhro": Sodhro(total_nr_frames),
     "Guo": Guo(total_nr_frames, frame_path_losses)
@@ -80,29 +80,14 @@ for frame_nr, frame_path_loss in enumerate(frame_path_losses):
 
         method.update_internal()
 
-        match name:
-            case "Optimal":
-                method.update_transmission_power(P_target, -85, -80)
-            case "Constant":
-                method.update_transmission_power(P_target, -85, -80)
-            case "Xiao_aggr_2008":
-                method.update_transmission_power(-82.5, -85, -80)
-            case "Xiao_cons_2008":
-                method.update_transmission_power(-82.5, -85, -80)
-            case "Xiao_aggr_2009":
-                method.update_transmission_power(-82.5, -85, -80)
-            case "Xiao_bal_2009":
-                method.update_transmission_power(-82.5, -85, -80)
-            case "Xiao_cons_2009":
-                method.update_transmission_power(-82.5, -85, -80)
-            case "Gao":
-                method.update_transmission_power(-82.5, -85, -80)
-            case "Sodhro":
-                method.update_transmission_power(-85, -88, -82.3)
-            case "Isak":
-                method.update_transmission_power(-85, -88, -82)
-            case "Guo":
-                method.update_transmission_power(-85, -88, -82)
+        if name.startswith("Xiao"):
+            method.update_transmission_power(-82.5, -85, -80)
+        elif name == "Gao":
+            method.update_transmission_power(-82.5, -85, -80)
+        elif name == "Sodhro":
+            method.update_transmission_power(-85, -88, -82.3)
+        else:
+            method.update_transmission_power(P_target, -85, -80)
 
         # Update method stats
         method.update_stats(frame_nr)
