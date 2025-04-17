@@ -4,7 +4,6 @@ from scipy.stats import norm, gamma
 import scipy.io
 from pathlib import Path
 import math
-from tpc_methods import TPCMethodInterface
 
 def calculate_received_power(tx_power_dbm: float, path_loss_dbm : float):
     return tx_power_dbm - path_loss_dbm
@@ -18,36 +17,6 @@ def tx_power_to_mW(tx_power):
     coeffs = [7.29169704e-04, 5.58419098e-02, 1.58221460e+00, 3.13663364e+01]
     poly_model = np.poly1d(coeffs)
     return poly_model(tx_power)
-
-def calculate_stats(method : TPCMethodInterface, name : str, frame_time, total_nr_frames):
-    total_consumed_power = frame_time * np.sum(tx_power_to_mW(method.tx_powers))
-    total_consumed_power /= 1000
-    avg_tx_power = np.average(method.tx_powers)
-    std_tx_power = np.std(method.tx_powers)
-    avg_consumed_power = tx_power_to_mW(avg_tx_power)
-    std_power_consumption = np.std(tx_power_to_mW(method.tx_powers))
-    avg_rx_power = np.average(method.rx_powers)
-    std_rx_power = np.std(method.rx_powers)
-    packet_loss_ratio = 100 * method.lost_frames / total_nr_frames
-    
-    avg_latency, jitter = "N/A", "N/A"
-    if method.latencies:
-        avg_latency = np.average(method.latencies)
-        jitter = np.std(method.latencies)
-    
-    return (
-        f"{name:<16} |"
-        + f"{total_consumed_power:>12.3f} |"
-        + f"{avg_consumed_power:>12.3f} |"
-        + f"{std_power_consumption:>7.3f} |"
-        + f"{avg_rx_power:>16.2f} |"
-        + f"{std_rx_power:>7.2f} |"
-        + f"{avg_tx_power:>16.2f} |"
-        + f"{std_tx_power:>7.2f} |"
-        + f"{packet_loss_ratio:>12.2f} |"
-        + f"{avg_latency:>12.2f} |"
-        + f"{jitter:>7.2f}"
-    )
 
 def simulate_path_loss(sample_rate : int, time : float) -> np.ndarray:
     """

@@ -8,19 +8,23 @@ import pickle
 import time
 
 # Load data from .mat file
-path = Path("..") / "data" / "Male1_3kph.mat"
-path_loss_list = load_mat_file(path)
+# path = Path("..") / "data" / "Male1_3kph.mat"
+# path_loss_list = load_mat_file(path)
 
 # Load data from pickle
-# path = Path("..") / "data" / "data.pkl"
-# with open(path, "rb") as file:
-#     data_dict = pickle.load(file)
-#     path_loss_list = navigate_dict(data_dict)
-#     del data_dict
+path = Path("..") / "data" / "data.pkl"
+with open(path, "rb") as file:
+    data_dict = pickle.load(file)
+    most_data_keys = ["pl_LeftWrist_RightHip", "pl_RightWrist_RightHip", "pl_LeftAnkle_RightHip"]
+    indx = 0
+    path_loss_list = []
+    for person, data in data_dict[most_data_keys[indx]]["6kph"].items():
+        path_loss_list += data
+    del data_dict
 
 # Simulate data
 start_time = time.perf_counter()
-# path_loss_list = simulate_path_loss(1000, 600)
+# path_loss_list = simulate_path_loss(1000, 60)
 
 # Parameters
 frame_time = 5.2701  # ms
@@ -32,7 +36,7 @@ rx_power_max = 0  # dBm
 P_target = -85  # dBm
 packet_loss_RSSI = -88 # Cite the standard
 
-processing_time = 3  # ms
+frame_processing_time = 3  # ms
 ack_frame_time = 0.2  # ms
 
 frame_path_losses = extract_frames(path_loss_list, frame_interval, frame_time)
@@ -42,7 +46,8 @@ print(f"Total number of frames: {total_nr_frames}")
 
 TPC_methods: dict[str, TPCMethodInterface] = {
     "Optimal": Optimal(frame_path_losses, packet_loss_RSSI, total_nr_frames),
-    "Constant": Constant(-10, total_nr_frames),
+    "Constant": Constant(total_nr_frames, -10),
+    "Naive": Naive(total_nr_frames),
     "Xiao_aggr_2008": Xiao_aggressive_2008(total_nr_frames),
     "Xiao_cons_2008": Xiao_conservative_2008(total_nr_frames),
     "Xiao_aggr_2009": Xiao_2009(total_nr_frames, 0.2, 0.8),
@@ -50,36 +55,24 @@ TPC_methods: dict[str, TPCMethodInterface] = {
     "Xiao_cons_2009": Xiao_2009(total_nr_frames, 0.8, 0.2),
     "Gao": Gao(total_nr_frames),
     "Sodhro": Sodhro(total_nr_frames),
-    "Guo": Guo(total_nr_frames, frame_path_losses)
+    "Guo": Guo(total_nr_frames),
+    "Smith": Smith_2011(total_nr_frames, 3),
 }
-
-# Initial transmission power setup
-path_loss_avg = np.average(frame_path_losses)
-for method in TPC_methods.values():
-    method.current_rx_power = -10 + path_loss_avg
-    method.current_tx_power = -10
-    method.update_internal()
 
 # Main simulation loop
 for frame_nr, frame_path_loss in enumerate(frame_path_losses):
     for name, method in TPC_methods.items():
-        method.current_rx_power = method.current_tx_power + frame_path_loss
+        method.update_current_rx(method.current_tx_power + frame_path_loss)
 
         # Check if packet is lost in the current frame
         packet_lost = method.current_rx_power < packet_loss_RSSI
 
-        if packet_lost:
-            method.consecutive_lost_frames += 1
-            method.lost_frames += 1
-            method.current_rx_power = -100 # Packet loss set RSSI -100 dBm
-        else:
-            extra_delay = method.consecutive_lost_frames * 200  # ms
-            latency = frame_time + processing_time + ack_frame_time + extra_delay
-            method.latencies.append(latency)
-            method.consecutive_lost_frames = 0
+        method.track_stats(
+            frame_nr, packet_lost, frame_interval,
+            frame_processing_time, ack_frame_time
+        )
 
-        method.update_internal()
-
+        # Give TPC algorithms feedback information and let them update TX power
         if name.startswith("Xiao"):
             method.update_transmission_power(-82.5, -85, -80)
         elif name == "Gao":
@@ -89,30 +82,13 @@ for frame_nr, frame_path_loss in enumerate(frame_path_losses):
         else:
             method.update_transmission_power(P_target, -85, -80)
 
-        # Update method stats
-        method.update_stats(frame_nr)
-
 print(f"Main simulation loop completed. {time.perf_counter() - start_time:2f}s")
 
-table_header = (
-    f"{'Method':<16} |"
-    + f"{'E_total (J)':>12} |"
-    + f"{'E_avg (mW)':>12} |"
-    + f"{'σ_E':>7} |"
-    + f"{'P_rx_avg (dBm)':>16} |"
-    + f"{'σ_P_rx':>7} |"
-    + f"{'P_tx_avg (dBm)':>16} |"
-    + f"{'σ_P_tx':>7} |"
-    + f"{'η_loss (%)':>12} |"
-    + f"{'T_avg (ms)':>12} |"
-    + f"{'J (ms)':>7}"
-)
 print(f"Number of samples {total_nr_frames}")
-print(table_header)
+print(TPCMethodInterface.get_stats_header())
 
 for name, method in TPC_methods.items():
-    stats_string = calculate_stats(method, name, frame_time, total_nr_frames)
-    print(stats_string)
+    print(method.calculate_stats(name, frame_time, total_nr_frames))
 
 # # Plot and summary statistics
 # plt.figure(figsize=(16, 9))
