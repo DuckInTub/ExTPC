@@ -26,8 +26,8 @@ class TPCMethodInterface(ABC):
     Subclasses must implement the `next_transmitt_power` method.
 
     Attributes:
-        _rx_powers (np.ndarray): Array storing recent received power values.
-        _tx_powers (np.ndarray): Array storing recent transmitted power values.
+        _rx_powers (np.ndarray): Stores received power values.
+        _tx_powers (np.ndarray): Stores corresponding TX for each value in _rx_powers.
         _lost_frames (int): Total number of lost frames.
         _latencies (list[int]): List of calculated latencies (in ms).
         _consecutive_lost_frames (int): Number of consecutive lost frames.
@@ -42,7 +42,7 @@ class TPCMethodInterface(ABC):
         Initializes the TPC supervisor state.
 
         Args:
-            nr_samples (int): Number of historical samples to store for RX and TX power.
+            nr_samples (int): Number of samples to store for RX and TX power.
             initial_tx_power (float): Initial transmission power in dBm.
             initial_rx_power (float): Initial received power in dBm.
         """
@@ -54,8 +54,8 @@ class TPCMethodInterface(ABC):
                 f"{MIN_TX_POWER} and {MAX_TX_POWER} dBm."
             )
 
-        self._rx_powers = np.zeros(nr_samples, dtype=np.float16)
-        self._tx_powers = np.zeros(nr_samples, dtype=np.float16)
+        self._rx_powers = np.zeros(nr_samples, dtype=np.float64)
+        self._tx_powers = np.zeros(nr_samples, dtype=np.float64)
         self._lost_frames: int = 0
         self._latencies: list[int] = []
         self._consecutive_lost_frames: int = 0
@@ -76,7 +76,7 @@ class TPCMethodInterface(ABC):
     @property
     def rx_powers(self) -> float:
         """Returns the historical array of received powers in dBm."""
-        return self.rx_powers
+        return self._rx_powers
 
     @property
     def tx_powers(self) -> float:
@@ -125,7 +125,7 @@ class TPCMethodInterface(ABC):
             self._latencies.append(latency)
             self._consecutive_lost_frames = 0
 
-        self._rx_powers[index] = self._current_rx_power
+        self._rx_powers[index] = self.current_rx_power
         self._tx_powers[index] = self._current_tx_power
 
     @classmethod
@@ -313,37 +313,6 @@ class Guo(TPCMethodInterface):
         next_tx_power = self.state_to_tx(predicted_next_state)
         return next_tx_power
 
-class Isak(TPCMethodInterface):
-
-    NR_SAMPLES = 4 # Number of samples for regression
-
-    def __init__(self, nr_samples, packet_loss_threshhold):
-        super().__init__(nr_samples)
-        self.packet_loss_limit = packet_loss_threshhold
-        self.latest_pathlosses = collections.deque([], maxlen=Isak.NR_SAMPLES) # FIFO length 8
-        self.sum_high = 0
-        self.sum_low = -90
-        self.iter = 0
-
-    def update_internal(self):
-        current_path_loss = self.current_rx_power - self.current_tx_power
-        self.iter += 1
-        self.latest_pathlosses.append(current_path_loss)
-        self.sum_high += max(self.latest_pathlosses)
-        self.sum_low  += min(self.latest_pathlosses)
-        # print(self.sum_high / self.iter, self.sum_low / self.iter)
-
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
-        if len(self.latest_pathlosses) < Isak.NR_SAMPLES:
-            return -10
-
-        path_losses_filtered = [L if L >= -85 else -85 for L in self.latest_pathlosses]
-        coeffs = np.polyfit(range(0, Isak.NR_SAMPLES, 1), path_losses_filtered, 3)
-        current_model = np.poly1d(coeffs)
-        predicted_path_loss = current_model(Isak.NR_SAMPLES+1)
-        next_tx_power = rx_target - predicted_path_loss
-        return np.clip(next_tx_power, MIN_TX_POWER, MAX_TX_POWER)
-
 class Naive(TPCMethodInterface):
     def __init__(self, nr_of_samples):
         super().__init__(nr_of_samples)
@@ -353,7 +322,9 @@ class Naive(TPCMethodInterface):
 
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
         current_path_loss = self.current_tx_power - self.current_rx_power
-        return np.clip(rx_target + current_path_loss, MIN_TX_POWER, MAX_TX_POWER)
+        prev_optimal_tx =  rx_target + current_path_loss
+        print(prev_optimal_tx)
+        return prev_optimal_tx
 
 class Optimal(TPCMethodInterface):
     def calculate_optimal(frame_path_loss_list, packet_loss_threshhold):
