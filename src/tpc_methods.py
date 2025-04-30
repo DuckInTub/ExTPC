@@ -2,7 +2,6 @@ from abc import ABC, abstractmethod
 import numpy as np
 import math
 import collections
-from collections import Counter
 from util_functions import tx_power_to_mW
 
 def level_to_tx_power(lvl : int):
@@ -54,8 +53,9 @@ class TPCMethodInterface(ABC):
                 f"{MIN_TX_POWER} and {MAX_TX_POWER} dBm."
             )
 
-        self._rx_powers = np.zeros(nr_samples, dtype=np.float64)
-        self._tx_powers = np.zeros(nr_samples, dtype=np.float64)
+        self._rx_powers_would = np.zeros(nr_samples, dtype=np.float32)
+        self._rx_powers = np.zeros(nr_samples, dtype=np.float32)
+        self._tx_powers = np.zeros(nr_samples, dtype=np.float32)
         self._lost_frames: int = 0
         self._latencies: list[int] = []
         self._consecutive_lost_frames: int = 0
@@ -82,6 +82,11 @@ class TPCMethodInterface(ABC):
     def tx_powers(self) -> float:
         """Returns the historical array of transmitted powers in dBm."""
         return self._tx_powers
+
+    @property
+    def rx_powers_would(self) -> float:
+        """Returns the array of rx powers in dBm without considering packet loss."""
+        return self._rx_powers_would
 
     def update_current_rx(self, rx_power: float) -> None:
         """
@@ -110,6 +115,7 @@ class TPCMethodInterface(ABC):
             frame_processing_time_ms (int): Time to process a frame in ms.
             ack_frame_time_ms (int): Time for ACK frame in ms.
         """
+        would_have_been_rx = self._current_rx_power
         if lost:
             self._consecutive_lost_frames += 1
             self._lost_frames += 1
@@ -125,7 +131,8 @@ class TPCMethodInterface(ABC):
             self._latencies.append(latency)
             self._consecutive_lost_frames = 0
 
-        self._rx_powers[index] = self.current_rx_power
+        self._rx_powers_would[index] = would_have_been_rx
+        self._rx_powers[index] = self._current_rx_power
         self._tx_powers[index] = self._current_tx_power
 
     @classmethod
@@ -137,21 +144,21 @@ class TPCMethodInterface(ABC):
             str: Table header string.
         """
         table_header = (
-            f"{'Method':<16} |"
-            + f"{'E_total (J)':>12} |"
-            + f"{'E_avg (mW)':>11} |"
-            + f"{'σ_E':>6} |"
-            + f"{'P_rx_avg (dBm)':>15} |"
-            + f"{'σ_P_rx':>7} |"
-            + f"{'P_tx_avg (dBm)':>15} |"
-            + f"{'σ_P_tx':>7} |"
-            + f"{'η_loss (%)':>11} |"
-            + f"{'T_avg (ms)':>11} |"
+            f"{'Method':<16} &"
+            + f"{'E_total (J)':>12} &"
+            + f"{'E_avg (mW)':>11} &"
+            + f"{'σ_E':>6} &"
+            + f"{'P_rx_avg (dBm)':>15} &"
+            + f"{'σ_P_rx':>7} &"
+            + f"{'P_tx_avg (dBm)':>15} &"
+            + f"{'σ_P_tx':>7} &"
+            + f"{'η_loss (%)':>11} &"
+            + f"{'T_avg (ms)':>11} &"
             + f"{'J (ms)':>7}"
         )
         return table_header
 
-    def calculate_stats(self, name : str, frame_time_ms : int, total_nr_frames) -> str:
+    def calculate_stats(self, name : str, frame_time_ms : float, total_nr_frames) -> str:
         """
         Calculates and returns a formatted string of statistics.
 
@@ -167,8 +174,9 @@ class TPCMethodInterface(ABC):
         total_consumed_power /= 1000
         avg_tx_power = np.average(self._tx_powers)
         std_tx_power = np.std(self._tx_powers, dtype=np.float64)
-        avg_consumed_power = tx_power_to_mW(avg_tx_power)
-        std_power_consumption = np.std(tx_power_to_mW(self._tx_powers))
+        mW_powers = tx_power_to_mW(self.tx_powers)
+        avg_consumed_power = np.average(mW_powers)
+        std_power_consumption = np.std(mW_powers)
         avg_rx_power = np.average(self._rx_powers)
         std_rx_power = np.std(self._rx_powers, dtype=np.float64)
         packet_loss_ratio = 100 * self._lost_frames / total_nr_frames
@@ -179,18 +187,38 @@ class TPCMethodInterface(ABC):
             jitter = np.std(self._latencies)
 
         return (
-            f"{name:<16} |"
-            + f"{total_consumed_power:>12.3f} |"
-            + f"{avg_consumed_power:>11.3f} |"
-            + f"{std_power_consumption:>6.3f} |"
-            + f"{avg_rx_power:>15.2f} |"
-            + f"{std_rx_power:>7.2f} |"
-            + f"{avg_tx_power:>15.2f} |"
-            + f"{std_tx_power:>7.2f} |"
-            + f"{packet_loss_ratio:>11.2f} |"
-            + f"{avg_latency:>11.2f} |"
+            f"{name:<16} &"
+            + f"{total_consumed_power:>12.3f} &"
+            + f"{avg_consumed_power:>11.3f} &"
+            + f"{std_power_consumption:>6.3f} &"
+            + f"{avg_rx_power:>15.2f} &"
+            + f"{std_rx_power:>7.2f} &"
+            + f"{avg_tx_power:>15.2f} &"
+            + f"{std_tx_power:>7.2f} &"
+            + f"{packet_loss_ratio:>11.2f} &"
+            + f"{avg_latency:>11.2f} &"
             + f"{jitter:>7.2f}"
         )
+
+    def output_stats(self, name : str, frame_time_ms : int, total_nr_frames) -> dict:
+        """Output the TPC algorithms stats as a dictionary item intended to be stored
+        on disk for use in creating graphs"""
+        plr = 100 * self._lost_frames / total_nr_frames
+        mW_powers = tx_power_to_mW(self.tx_powers)
+        avg_consumed_power = np.average(mW_powers)
+        std_power_consumption = np.std(mW_powers)
+        ret = {
+            "name": name,
+            "rx": self.rx_powers,
+            "tx": self.tx_powers,
+            "rx_would": self.rx_powers_would,
+            "PLR": plr,
+            "jitter": np.std(self._latencies),
+            "avg_latency": np.average(self._latencies),
+            "avg_E": avg_consumed_power,
+            "std_E": std_power_consumption
+        }
+        return ret
 
     def update_transmission_power(self, rx_target, rx_target_low, rx_target_high):
         """
@@ -317,13 +345,9 @@ class Naive(TPCMethodInterface):
     def __init__(self, nr_of_samples):
         super().__init__(nr_of_samples)
 
-    def update_internal(self):
-        pass
-
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
         current_path_loss = self.current_tx_power - self.current_rx_power
         prev_optimal_tx =  rx_target + current_path_loss
-        print(prev_optimal_tx)
         return prev_optimal_tx
 
 class Optimal(TPCMethodInterface):
@@ -450,12 +474,14 @@ class Gao(TPCMethodInterface):
 
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
         self.average_RSSI = self.filter_coeff*self.current_rx_power + (1 - self.filter_coeff)*self.average_RSSI
+        # self.average_RSSI = self.current_rx_power + (1 - self.filter_coeff)*self.average_RSSI
 
         delta = 0
         if self.average_RSSI > rx_target_high or self.average_RSSI < rx_target_low:
             ideal = rx_target - self.average_RSSI
 
             diffs = np.abs(ideal - self.DELTA_P_i)
+            # diffs[diffs <= ideal] = 120
 
             index_of_min = np.argmin(diffs)
             delta = self.DELTA_P_i[index_of_min]
@@ -475,14 +501,18 @@ class Smith_2011(TPCMethodInterface):
     def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
         mag_l = self.current_rx_power
 
-        i = np.searchsorted(self.levels_k, mag_l) - 1
+        level_k_i = self.levels_k[0]
+        for i, level in enumerate(self.levels_k[1:]):
+            if self.levels_k[i-1] < mag_l <= self.levels_k[i]:
+                level_k_i = level
+                break
 
         C = self.RX + self.a
 
-        if self.levels_k[i] <= C:
+        if level_k_i <= C:
             ret = 0
-        elif C + 2.5 <= self.levels_k[i] <= 25:
-            ret = C + self.b - self.levels_k[i]
+        elif C + 2.5 <= level_k_i <= C + 25:
+            ret = C + self.b - level_k_i
         else:
             ret = -25 + self.b
         return np.clip(ret, MIN_TX_POWER, MAX_TX_POWER)
@@ -543,7 +573,6 @@ class Kim(TPCMethodInterface):
                 + sum( (self.TRL - li) / self.n)
             )
             self.current_tx_power += E_link
-            print(E_link)
             self.i = self.n
             return self.current_tx_power
         else:
