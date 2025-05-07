@@ -582,25 +582,20 @@ class Kim(TPCMethodInterface):
             return self.current_tx_power
 
 class Sodhro(TPCMethodInterface):
-
     def __init__(self, nr_samples):
         super().__init__(nr_samples)
         self.R_avg = 0
-        self.R_lowest = -80 # "More like next to latest"
-        self.R_latest = -80
+        self.R_lowest = -80; self.R_latest = -80
         self.N = 0 # n in eq 4 & 5 in Sodhro
-        self.R_i_R_avg_sum = 0 # 
-        self.TRL = -88
-        self.TRH_var = 0
+        self.R_i_R_avg_sum = 0
+        self.TRL = -88; self.TRH_var = 0
 
     def update_internal(self):
         self.R_lowest = self.R_latest 
         self.R_latest = self.current_rx_power
-        ALPHA_1 = 1.0
-        ALPHA_2 = 0.4
+        ALPHA_1 = 1.0; ALPHA_2 = 0.4
 
-        # Update R_avg eq. (1, 2)
-        if self.R_latest > self.R_avg:
+        if self.R_latest > self.R_avg:  # Update R_avg eq. (1, 2)
             self.R_avg = self.R_latest + (1 - ALPHA_1) * self.R_lowest
         elif self.R_latest < self.R_avg:
             self.R_avg = self.R_latest + (1 - ALPHA_2) * self.R_lowest
@@ -608,7 +603,6 @@ class Sodhro(TPCMethodInterface):
         # Update TRH_var dynamically eq. (4, 5)
         self.R_i_R_avg_sum += self.current_rx_power - self.R_avg
         self.N += 1
-
         sigma = math.sqrt( (1 / self.N) * self.R_i_R_avg_sum )
         self.TRH_var = self.TRL + sigma
 
@@ -621,10 +615,8 @@ class Sodhro(TPCMethodInterface):
             args = [delta for delta in P_DELTAS if delta > R_target - self.R_avg]
             if not args:
                 return self.current_tx_power
-
             indx = np.argmin(abs(R_target - self.R_avg - arg) for arg in args)
             delta_P = args[indx]
         elif self.TRL <= self.R_avg <= self.TRH_var:
             delta_P = 0
-
         return np.clip(self.current_tx_power + delta_P, MIN_TX_POWER, MAX_TX_POWER)
