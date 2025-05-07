@@ -12,7 +12,8 @@ try:
     FRAME_INTERVAL = int(sys.argv[2])
     TIME = int(sys.argv[3])
 except (IndexError, ValueError) as e:
-    print("Usage: python script.py <simulate: 0 or 1> <frame_interval_ms> <time_s>")
+    print("Usage: python main.py <simulate: 0 or 1> <frame_interval_ms> <time_s>")
+    print("Example: python main.py 1 200 60") 
     sys.exit(1)
 
 # Parameters
