@@ -1,6 +1,7 @@
-# ExTPC (Title Pending)
+# Comparative Evaluation of Transmission Power Control Algorithms in WBAN
 
-This repository contains the code for the thesis "Comparative Evaluation of Transmission Power Control Algorithms in WBAN: Energy Efficiency and Reliability Metrics" conducted at [University West](https://www.hv.se/en/).
+This repository contains the code for the thesis "Comparative Evaluation of Transmission Power Control Algorithms in WBAN: Energy
+Efficiency and Packet Loss" conducted at [University West](https://www.hv.se/en/).
 The thesis is centered around the application of Transmission Power Control (TPC) in Wireless Body Area Networks (WBANs) as a way to save energy.
 
 > Transmission Power Control (TPC) is a way to adaptively on the fly adjust the transmission power of the sender to save energy overall.
