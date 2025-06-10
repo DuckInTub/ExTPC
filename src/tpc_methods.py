@@ -22,7 +22,7 @@ class TPCMethodInterface(ABC):
     - Containing the TX power to within [MIN_TX_POWER, MAX_TX_POWER].
     - Tracking current RX and TX powers.
 
-    Subclasses must implement the `next_transmitt_power` method.
+    Subclasses must implement the `next_transmit_power` method.
 
     Attributes:
         _rx_powers (np.ndarray): Stores received power values.
@@ -232,13 +232,13 @@ class TPCMethodInterface(ABC):
         Returns:
             float: New clipped transmission power in dBm.
         """
-        next_P_tx = self.next_transmitt_power(rx_target, rx_target_low, rx_target_high)
+        next_P_tx = self.next_transmit_power(rx_target, rx_target_low, rx_target_high)
         clipped = np.clip(next_P_tx, MIN_TX_POWER, MAX_TX_POWER)
         self._current_tx_power = clipped
         return clipped
 
     @abstractmethod
-    def next_transmitt_power(
+    def next_transmit_power(
         self, 
         rx_target: float, 
         rx_target_low: float, 
@@ -314,7 +314,7 @@ class Guo(TPCMethodInterface):
 
         self.previous_state = current_state
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high):
         self.update_prediction_matrix()
         # C : current_state
         # C_bar : previous_predicted_state
@@ -345,7 +345,7 @@ class Naive(TPCMethodInterface):
     def __init__(self, nr_of_samples):
         super().__init__(nr_of_samples)
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high):
         current_path_loss = self.current_tx_power - self.current_rx_power
         prev_optimal_tx =  rx_target + current_path_loss
         return prev_optimal_tx
@@ -370,7 +370,7 @@ class Optimal(TPCMethodInterface):
         self.internal_optimal = np.roll(self.internal_optimal, -1)
         self.indx = 0
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high):
         ret = self.internal_optimal[self.indx]
         self.indx += 1
         return np.clip(ret, MIN_TX_POWER, MAX_TX_POWER)
@@ -380,7 +380,7 @@ class Constant(TPCMethodInterface):
         super().__init__(nr_of_samples)
         self.tx_power_constant = constant_power
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high):
         return self.tx_power_constant # dBm
 
 class Xiao_aggressive_2008(TPCMethodInterface):
@@ -389,7 +389,7 @@ class Xiao_aggressive_2008(TPCMethodInterface):
         self.avg_weight = avg_weight # α in Xiaos paper
         self.exp_avg_rx_power: float = 0.0 # R̅ in Xiaos paper
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high) -> float:
         self.exp_avg_rx_power = (1 - self.avg_weight)*self.exp_avg_rx_power + self.avg_weight*self.current_rx_power
 
         if self.exp_avg_rx_power > rx_target_high:
@@ -407,7 +407,7 @@ class Xiao_conservative_2008(TPCMethodInterface):
         self.decrease_delta = decrease_delta
         self.Th_counter: int = 0
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high) -> float:
         if self.current_rx_power > rx_target_high:
             self.Th_counter += 1
         else:
@@ -428,7 +428,7 @@ class Xiao_2009(TPCMethodInterface):
         self.alpha_d = alpha_d
         self.alpha_u = alpha_u
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high):
         R = self.current_rx_power
         if R <= self.R_avg:
             self.R_avg = self.alpha_d * R + (1 - self.alpha_d) * self.R_avg
@@ -451,7 +451,7 @@ class Xiao_2009_level(TPCMethodInterface):
         self.alpha_u = alpha_u
         self.TX_level = 31
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high):
         R = self.current_rx_power
         if R <= self.R_avg:
             self.R_avg = self.alpha_d * R + (1 - self.alpha_d) * self.R_avg
@@ -472,7 +472,7 @@ class Gao(TPCMethodInterface):
         self.average_RSSI: float = 0.0
         self.DELTA_P_i = np.array([-3, -2, -1, 0, 1, 2, 3, 4])
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high) -> float:
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high) -> float:
         self.average_RSSI = self.filter_coeff*self.current_rx_power + (1 - self.filter_coeff)*self.average_RSSI
         # self.average_RSSI = self.current_rx_power + (1 - self.filter_coeff)*self.average_RSSI
 
@@ -498,7 +498,7 @@ class Smith_2011(TPCMethodInterface):
         self.a = [7.5, 10, 7.5, 5][K]
         self.b = [1, 0, 1, 1][K]
     
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high):
         mag_l = self.current_rx_power
 
         level_k_i = self.levels_k[0]
@@ -549,7 +549,7 @@ class Kim(TPCMethodInterface):
         return self.delta
 
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high):
         Ri = self.current_rx_power
 
         # Update RSSI histories
@@ -606,7 +606,7 @@ class Sodhro(TPCMethodInterface):
         sigma = math.sqrt( (1 / self.N) * self.R_i_R_avg_sum )
         self.TRH_var = self.TRL + sigma
 
-    def next_transmitt_power(self, rx_target, rx_target_low, rx_target_high):
+    def next_transmit_power(self, rx_target, rx_target_low, rx_target_high):
         self.update_internal()
         P_DELTAS = list(range(-31, 32))
         R_target = rx_target
